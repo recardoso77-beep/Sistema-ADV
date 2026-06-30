@@ -253,6 +253,9 @@ Sempre responda em português do Brasil usando formatação Markdown amigável.`
     const cleanQuery = query.trim();
     if (!cleanQuery) return [];
 
+    // LOG: Consultando
+    console.log(`[PROVIDER] Consultando: "${cleanQuery}"`);
+
     try {
       const client = getGeminiClient();
       const prompt = `Você é um robô de busca avançado e integrador oficial dos Tribunais de Justiça Brasileiros (TJSP, TRT2, TRF3, STJ, STF).
@@ -293,6 +296,9 @@ Retorne EXCLUSIVAMENTE um array JSON de objetos contendo exatamente esses campos
 
       let responseText = response.text || "";
       if (responseText) {
+        // LOG: Payload recebido
+        console.log("[PROVIDER] Payload bruto recebido da API:", responseText);
+
         // Limpa blocos de código Markdown de JSON que o modelo pode teimar em retornar
         if (responseText.includes("```json")) {
           responseText = responseText.split("```json")[1].split("```")[0];
@@ -301,18 +307,27 @@ Retorne EXCLUSIVAMENTE um array JSON de objetos contendo exatamente esses campos
         }
         
         const parsed = JSON.parse(responseText.trim());
+        let results: any[] = [];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          results = parsed;
         } else if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
           if (Array.isArray(parsed.processos) && parsed.processos.length > 0) {
-            return parsed.processos;
-          }
-          if (parsed.cnj) {
-            return [parsed];
+            results = parsed.processos;
+          } else if (parsed.cnj) {
+            results = [parsed];
           }
         }
+
+        // LOG: Quantidade de processos
+        console.log(`[PROVIDER] Quantidade de processos parseados com sucesso: ${results.length}`);
+        if (results.length > 0) {
+          return results;
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
+      // LOG: Erro e Stack completa
+      console.error(`[PROVIDER] Erro: ${error.message}`);
+      console.error(`[PROVIDER] Stack completa: ${error.stack}`);
       console.error("Gemini searchCourtsData failed, using fallback mock generator:", error);
     }
 

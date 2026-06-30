@@ -54,29 +54,107 @@ export default function Processes({ processes, clients, token, onRefresh, userRo
   const [courtSearchResults, setCourtSearchResults] = useState<any[]>([]);
   const [selectedClientForImport, setSelectedClientForImport] = useState<{[key: string]: string}>({});
 
+  const detectQueryType = (q: string): string => {
+    const clean = q.trim();
+    if (!clean) return "";
+
+    const digitsOnly = clean.replace(/\D/g, "");
+    
+    // CNJ Check
+    const cnjRegex = /^\d{7}-?\d{2}\.?\d{4}\.?\d\.?\d{2}\.?\d{4}$/;
+    if (cnjRegex.test(clean) || (digitsOnly.length === 20 && /^\d+$/.test(digitsOnly))) {
+      return "CNJ";
+    }
+
+    // OAB Check
+    const oabRegex = /oab/i;
+    const oabSuffixRegex = /\b\d+[\s\/-]?[A-Z]{2}\b/i;
+    const oabPrefixSuffixRegex = /\b[A-Z]{2}[\s\/-]?\d+\b/i;
+    if (oabRegex.test(clean) || oabSuffixRegex.test(clean) || oabPrefixSuffixRegex.test(clean)) {
+      return "OAB";
+    }
+
+    // Party Check
+    const partyIndicators = [
+      "ltda", "s/a", "s\\.a\\.", "me", "eireli", "inc", "co", "corp", "empresa", "banco", "seguradora", "comercio", "servicos", "associa", "fundacao", "instituto", "cooperativa"
+    ];
+    const cleanLower = clean.toLowerCase();
+    const isCompany = partyIndicators.some(indicator => {
+      const regex = new RegExp(`\\b${indicator}\\b`, "i");
+      return regex.test(cleanLower);
+    });
+
+    if (isCompany) {
+      return "Parte";
+    }
+
+    return "Nome";
+  };
+
   const handleSearchCourts = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!courtQuery.trim()) return;
     setSearchingCourts(true);
     setErrorMsg("");
     setCourtSearchResults([]);
+
+    // LOG: Pesquisa enviada
+    console.log(`[FRONTEND] Pesquisa enviada: "${courtQuery}"`);
+
     try {
       const res = await fetch(`/api/processes/search-courts?query=${encodeURIComponent(courtQuery)}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-      const data = await res.json();
+
+      // LOG: Status HTTP
+      console.log(`[FRONTEND] Status HTTP recebido: ${res.status}`);
+
       if (res.ok) {
+        const data = await res.json();
+        
+        // LOG: Payload recebido e Quantidade de processos
+        console.log("[FRONTEND] Payload recebido:", data);
+        console.log(`[FRONTEND] Quantidade de processos retornados: ${data.length}`);
+
         setCourtSearchResults(data);
         if (data.length === 0) {
-          setErrorMsg("Nenhum processo correspondente foi localizado nos sistemas dos tribunais.");
+          setErrorMsg("Nenhum processo encontrado.");
         }
       } else {
-        setErrorMsg(data.error || "Erro ao consultar os tribunais.");
+        let errMessage = "Erro ao consultar os tribunais.";
+        let errStack = "";
+        try {
+          const errData = await res.json();
+          errMessage = errData.error || errMessage;
+          errStack = errData.stack || "";
+        } catch (jsonErr) {}
+
+        // LOG: Erro e Stack completa
+        console.error(`[FRONTEND] Erro da requisição: ${errMessage}`);
+        if (errStack) {
+          console.error(`[FRONTEND] Stack completa: ${errStack}`);
+        }
+
+        // Elegant error message mapping based on status or message content
+        if (res.status === 401 || res.status === 403) {
+          setErrorMsg("Erro de autenticação. Por favor, verifique se sua sessão expirou.");
+        } else if (res.status === 408 || res.status === 504) {
+          setErrorMsg("Tempo limite excedido. O tribunal demorou muito para responder.");
+        } else if (res.status === 503) {
+          setErrorMsg("Tribunal indisponível. Tente novamente mais tarde.");
+        } else if (errMessage.toLowerCase().includes("key") || errMessage.toLowerCase().includes("not configured")) {
+          setErrorMsg("Erro de autenticação ou API temporariamente indisponível (Chave de API não configurada).");
+        } else {
+          setErrorMsg(errMessage);
+        }
       }
-    } catch (err) {
-      setErrorMsg("Erro de comunicação ao consultar os tribunais.");
+    } catch (err: any) {
+      // LOG: Erro e Stack completa
+      console.error("[FRONTEND] Erro de rede:", err.message);
+      console.error("[FRONTEND] Stack completa:", err.stack);
+      setErrorMsg("API temporariamente indisponível. Por favor, verifique sua conexão de rede.");
     } finally {
       setSearchingCourts(false);
     }
@@ -703,6 +781,14 @@ export default function Processes({ processes, clients, token, onRefresh, userRo
                         )}
                       </button>
                     </div>
+                    {courtQuery.trim() && (
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-400 font-medium">Busca Inteligente detectou:</span>
+                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md uppercase tracking-wider flex items-center gap-1">
+                          ✨ Consulta por {detectQueryType(courtQuery)}
+                        </span>
+                      </div>
+                    )}
                     <span className="block text-[10px] text-slate-400 mt-1.5 leading-relaxed">
                       O sistema fará uma busca integrada e varredura automática em diários de justiça e bancos de dados de tribunais brasileiros (TJSP, TRT2, TRF3, STJ, etc.) retornando os dados completos para importação instantânea.
                     </span>

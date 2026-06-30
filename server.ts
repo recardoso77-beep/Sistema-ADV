@@ -4,8 +4,10 @@ import fs from "fs";
 import AdmZip from "adm-zip";
 import { createServer as createViteServer } from "vite";
 import { DB } from "./src/server/db.ts";
+import { StorageFactory } from "./src/server/services/cloud/factory/StorageFactory.ts";
 import { Auth, AuthenticatedRequest } from "./src/server/auth.ts";
 import { LegalAI } from "./src/server/gemini.ts";
+import { GoogleCalendarService } from "./src/server/services/google-calendar.ts";
 import nodemailer from "nodemailer";
 
 const app = express();
@@ -810,6 +812,56 @@ app.post("/api/events", Auth.requireAuth, Auth.requireRoles(["admin", "partner",
       }
     }
 
+    // Google Calendar Instant Sync
+    try {
+      const userId = req.user?.id || "1";
+      const googleConn = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === "google_calendar" && a.connected === 1);
+      if (googleConn) {
+        if (googleConn.access_token === "mock_calendar_access_token") {
+          const mockGId = "mock_event_" + Math.random().toString(36).substr(2, 9);
+          await DB.table("events").update(event.id, {
+            google_event_id: mockGId,
+            calendar_id: "mock_cal_123",
+            sync_status: "synced"
+          });
+          event.google_event_id = mockGId;
+          event.calendar_id = "mock_cal_123";
+          event.sync_status = "synced";
+        } else {
+          const token = await GoogleCalendarService.getValidToken(userId);
+          if (token) {
+            const mapping = await GoogleCalendarService.initializeCalendars(token, userId);
+            const catType = event.type === "meeting" || event.type === "hearing" || event.type === "deadline" || event.type === "reminder" ? event.type : "default";
+            const calendarId = mapping[catType] || "primary";
+            
+            const body = await GoogleCalendarService.buildGoogleEventBody(event, event.law_firm_id);
+            const createRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(body),
+            });
+
+            if (createRes.ok) {
+              const newGev = await createRes.json() as any;
+              await DB.table("events").update(event.id, {
+                google_event_id: newGev.id,
+                calendar_id: calendarId,
+                sync_status: "synced",
+              });
+              event.google_event_id = newGev.id;
+              event.calendar_id = calendarId;
+              event.sync_status = "synced";
+            }
+          }
+        }
+      }
+    } catch (gErr: any) {
+      console.error("[GOOGLE_CALENDAR] Instant event push failed:", gErr.message);
+    }
+
     res.status(201).json(event);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -825,6 +877,43 @@ app.put("/api/events/:id", Auth.requireAuth, Auth.requireRoles(["admin", "partne
        return;
     }
     await logAudit(req, "Atualizou Evento", "events", req.params.id, `Agenda atualizada para compromisso ${event.title}`);
+
+    // Google Calendar Instant Sync Update
+    try {
+      const userId = req.user?.id || "1";
+      const googleConn = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === "google_calendar" && a.connected === 1);
+      if (googleConn && event.google_event_id) {
+        if (googleConn.access_token === "mock_calendar_access_token") {
+          await DB.table("events").update(event.id, { sync_status: "synced" });
+          event.sync_status = "synced";
+        } else {
+          const token = await GoogleCalendarService.getValidToken(userId);
+          if (token) {
+            const calendarId = event.calendar_id || "primary";
+            const body = await GoogleCalendarService.buildGoogleEventBody(event, event.law_firm_id);
+            const updateRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events/${event.google_event_id}`, {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(body),
+            });
+
+            if (updateRes.ok) {
+              await DB.table("events").update(event.id, { sync_status: "synced" });
+              event.sync_status = "synced";
+            } else {
+              await DB.table("events").update(event.id, { sync_status: "pending_update" });
+              event.sync_status = "pending_update";
+            }
+          }
+        }
+      }
+    } catch (gErr: any) {
+      console.error("[GOOGLE_CALENDAR] Instant event update failed:", gErr.message);
+    }
+
     res.json(event);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -834,6 +923,20 @@ app.put("/api/events/:id", Auth.requireAuth, Auth.requireRoles(["admin", "partne
 // Delete event
 app.delete("/api/events/:id", Auth.requireAuth, Auth.requireRoles(["admin", "partner", "secretary"]), async (req: AuthenticatedRequest, res) => {
   try {
+    const userId = req.user?.id || "1";
+    const event = await DB.table("events").findOne((e) => e.id === req.params.id);
+    
+    if (event && event.google_event_id) {
+      try {
+        const googleConn = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === "google_calendar" && a.connected === 1);
+        if (googleConn && googleConn.access_token !== "mock_calendar_access_token") {
+          await GoogleCalendarService.deleteFromGoogle(userId, event.google_event_id, event.calendar_id || "primary");
+        }
+      } catch (gErr: any) {
+        console.error("[GOOGLE_CALENDAR] Instant event delete failed:", gErr.message);
+      }
+    }
+
     const success = await DB.table("events").delete(req.params.id);
     if (!success) {
        res.status(404).json({ error: "Evento não encontrado." });
@@ -1297,116 +1400,245 @@ async function getValidCloudToken(lawFirmId: string, provider: string): Promise<
   }
 }
 
-// 1. Unified Status Endpoint
+// ==========================================
+// UNIFIED CLOUD GED INTEGRATION MODULE (DROPBOX, GDRIVE, ONEDRIVE)
+// ==========================================
+
+// Helper to check and refresh tokens on cloud_accounts
+async function getValidCloudTokenForUser(userId: string, provider: string): Promise<string | null> {
+  try {
+    const existing = await DB.table("cloud_accounts").findOne((acc) => acc.user_id === userId && acc.provider === provider);
+    if (!existing) return null;
+
+    const expiresAt = Number(existing.expires_at);
+    if (expiresAt && Date.now() > expiresAt - 300000) {
+      let client_id = "";
+      let client_secret = "";
+      let tokenUrl = "";
+
+      if (provider === "dropbox") {
+        client_id = process.env.DROPBOX_CLIENT_ID || "";
+        client_secret = process.env.DROPBOX_CLIENT_SECRET || "";
+        tokenUrl = "https://api.dropboxapi.com/oauth2/token";
+      } else if (provider === "gdrive") {
+        client_id = process.env.GOOGLE_CLIENT_ID || "";
+        client_secret = process.env.GOOGLE_CLIENT_SECRET || "";
+        tokenUrl = "https://oauth2.googleapis.com/token";
+      } else if (provider === "onedrive") {
+        client_id = process.env.ONEDRIVE_CLIENT_ID || "";
+        client_secret = process.env.ONEDRIVE_CLIENT_SECRET || "";
+        tokenUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+      }
+
+      if (client_id && client_secret && existing.refresh_token && !existing.refresh_token.startsWith("mock_")) {
+        try {
+          const response = await fetch(tokenUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              grant_type: "refresh_token",
+              refresh_token: existing.refresh_token,
+              client_id,
+              client_secret,
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json() as any;
+            const newAccessToken = data.access_token;
+            const newExpiresIn = data.expires_in || 3600;
+            const newExpiresAt = (Date.now() + newExpiresIn * 1000).toString();
+
+            await DB.table("cloud_accounts").update(existing.id, {
+              access_token: newAccessToken,
+              expires_at: newExpiresAt,
+              updated_at: new Date().toISOString()
+            });
+
+            return newAccessToken;
+          }
+        } catch (err) {
+          console.error(`Failed to refresh token for ${provider}:`, err);
+        }
+      }
+    }
+
+    return existing.access_token;
+  } catch (err) {
+    console.error("getValidCloudTokenForUser error:", err);
+    return null;
+  }
+}
+
+// 1. Unified Status Endpoint - Returns statuses of all 3 providers
 app.get("/api/cloud/status", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
+    const userId = req.user?.id || "1";
     const lawFirmId = req.user?.law_firm_id || "1";
-    const firms = await DB.table("law_firms").find((f) => f.id === lawFirmId);
-    if (!firms || firms.length === 0) {
-      res.status(404).json({ error: "Escritório não encontrado." });
-      return;
+    
+    const providers = ["dropbox", "gdrive", "onedrive"];
+    const statuses: Record<string, any> = {};
+
+    for (const p of providers) {
+      // Check user cloud_accounts
+      const acc = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === p);
+      let connected = false;
+      let email: string | null = null;
+      let mockMode = true;
+      let used = 1048576 * 100; // default mocks
+      let total = 1048576 * 1024 * 2;
+      let used_formatted = "100 MB";
+      let total_formatted = "2.0 GB";
+
+      // Credentials check in process.env
+      let hasEnvCredentials = false;
+      if (p === "dropbox" && process.env.DROPBOX_CLIENT_ID) hasEnvCredentials = true;
+      if (p === "gdrive" && process.env.GOOGLE_CLIENT_ID) hasEnvCredentials = true;
+      if (p === "onedrive" && process.env.ONEDRIVE_CLIENT_ID) hasEnvCredentials = true;
+
+      if (acc && acc.connected) {
+        connected = true;
+        email = acc.email;
+        mockMode = !hasEnvCredentials;
+        
+        // Dynamic Quota if real connection
+        if (hasEnvCredentials) {
+          try {
+            const providerInstance = await StorageFactory.getProvider(lawFirmId);
+            if (providerInstance) {
+              const q = await providerInstance.getQuota();
+              used = q.used;
+              total = q.total;
+              used_formatted = q.used_formatted || "";
+              total_formatted = q.total_formatted || "";
+            }
+          } catch (e) {
+            // Ignore quota fetch errors
+          }
+        } else {
+          // Mock quota values
+          if (p === "gdrive") {
+            used = 1048576 * 450;
+            total = 1048576 * 1024 * 15;
+            used_formatted = "450 MB";
+            total_formatted = "15 GB";
+          } else if (p === "onedrive") {
+            used = 1048576 * 250;
+            total = 1048576 * 1024 * 5;
+            used_formatted = "250 MB";
+            total_formatted = "5.0 GB";
+          }
+        }
+      } else {
+        // Legacy fallback from law_firms table
+        const firms = await DB.table("law_firms").find((f) => f.id === lawFirmId);
+        if (firms && firms.length > 0) {
+          const firm = firms[0];
+          if (firm.cloud_provider === p) {
+            let firmToken = "";
+            let firmClientId = "";
+            if (p === "dropbox") {
+              firmToken = firm.dropbox_access_token;
+              firmClientId = firm.dropbox_client_id;
+            } else if (p === "gdrive") {
+              firmToken = firm.gdrive_access_token;
+              firmClientId = firm.gdrive_client_id;
+            } else if (p === "onedrive") {
+              firmToken = firm.onedrive_access_token;
+              firmClientId = firm.onedrive_client_id;
+            }
+
+            if (firmToken) {
+              connected = true;
+              email = `ged@${firm.name.toLowerCase().replace(/[^a-z0-9]/g, "") || "legalone"}.com.br`;
+              mockMode = !firmClientId;
+            }
+          }
+        }
+      }
+
+      statuses[p] = {
+        connected,
+        email,
+        mockMode,
+        used,
+        total,
+        used_formatted,
+        total_formatted
+      };
     }
-    const firm = firms[0];
-    const provider = firm.cloud_provider || "none";
-
-    let connected = false;
-    let customCreds = false;
-    let clientId = "";
-
-    if (provider === "dropbox") {
-      connected = !!firm.dropbox_access_token;
-      customCreds = !!firm.dropbox_client_id;
-      clientId = firm.dropbox_client_id || "";
-    } else if (provider === "gdrive") {
-      connected = !!firm.gdrive_access_token;
-      customCreds = !!firm.gdrive_client_id;
-      clientId = firm.gdrive_client_id || "";
-    } else if (provider === "onedrive") {
-      connected = !!firm.onedrive_access_token;
-      customCreds = !!firm.onedrive_client_id;
-      clientId = firm.onedrive_client_id || "";
-    }
-
-    const isMockMode = !clientId;
 
     res.json({
-      provider,
-      connected,
-      email: connected ? (isMockMode ? `suporte@${firm.name.toLowerCase().replace(/[^a-z0-9]/g, "") || "legalone"}.com.br (Demo)` : `ged@${firm.name.toLowerCase().replace(/[^a-z0-9]/g, "") || "legalone"}.com.br`) : null,
-      mockMode: isMockMode,
-      hasCustomCredentials: customCreds,
-      customClientId: clientId,
+      providers: statuses
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 2. Generate Cloud Auth URL
+// 2. Generate Cloud Auth URL - receives ?provider=gdrive etc.
 app.get("/api/cloud/auth-url", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
+    const provider = req.query.provider as string || "dropbox";
+    const userId = req.user?.id || "1";
     const lawFirmId = req.user?.law_firm_id || "1";
-    const firms = await DB.table("law_firms").find((f) => f.id === lawFirmId);
-    if (!firms || firms.length === 0) {
-      res.status(404).json({ error: "Escritório não encontrado." });
-      return;
-    }
-    const firm = firms[0];
-    const provider = firm.cloud_provider || "none";
-    const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
+    const appUrl = process.env.APP_URL || `https://${req.headers.host}`;
+
+    const state = `${userId}_${lawFirmId}_${provider}`;
 
     if (provider === "dropbox") {
-      const client_id = firm.dropbox_client_id;
-      const client_secret = firm.dropbox_client_secret;
+      const client_id = process.env.DROPBOX_CLIENT_ID;
+      const client_secret = process.env.DROPBOX_CLIENT_SECRET;
       const redirectUri = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/dropbox`;
 
       if (client_id && client_secret) {
-        const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&token_access_type=offline&state=${lawFirmId}`;
+        const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&token_access_type=offline&state=${state}`;
         res.json({ url: authUrl, mock: false });
       } else {
-        const mockAuthUrl = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/dropbox?code=mock_code&state=${lawFirmId}`;
+        const mockAuthUrl = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/dropbox?code=mock_code&state=${state}`;
         res.json({ url: mockAuthUrl, mock: true });
       }
     } else if (provider === "gdrive") {
-      const client_id = firm.gdrive_client_id;
-      const client_secret = firm.gdrive_client_secret;
+      const client_id = process.env.GOOGLE_CLIENT_ID;
+      const client_secret = process.env.GOOGLE_CLIENT_SECRET;
       const redirectUri = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/gdrive`;
 
       if (client_id && client_secret) {
-        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent("https://www.googleapis.com/auth/drive.readonly")}&access_type=offline&prompt=consent&state=${lawFirmId}`;
+        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent("https://www.googleapis.com/auth/drive")}&access_type=offline&prompt=consent&state=${state}`;
         res.json({ url: authUrl, mock: false });
       } else {
-        const mockAuthUrl = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/gdrive?code=mock_code&state=${lawFirmId}`;
+        const mockAuthUrl = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/gdrive?code=mock_code&state=${state}`;
         res.json({ url: mockAuthUrl, mock: true });
       }
     } else if (provider === "onedrive") {
-      const client_id = firm.onedrive_client_id;
-      const client_secret = firm.onedrive_client_secret;
+      const client_id = process.env.ONEDRIVE_CLIENT_ID;
+      const client_secret = process.env.ONEDRIVE_CLIENT_SECRET;
       const redirectUri = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/onedrive`;
 
       if (client_id && client_secret) {
-        const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent("files.read.all offline_access")}&response_mode=query&state=${lawFirmId}`;
+        const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent("files.readwrite.all offline_access")}&response_mode=query&state=${state}`;
         res.json({ url: authUrl, mock: false });
       } else {
-        const mockAuthUrl = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/onedrive?code=mock_code&state=${lawFirmId}`;
+        const mockAuthUrl = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/onedrive?code=mock_code&state=${state}`;
         res.json({ url: mockAuthUrl, mock: true });
       }
     } else {
-      res.status(400).json({ error: "Nenhum provedor de nuvem configurado para este escritório." });
+      res.status(400).json({ error: "Provedor inválido." });
     }
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 3. OAuth Callbacks
+// 3. OAuth Callbacks (Dropbox)
 app.get("/api/cloud/callback/dropbox", async (req, res) => {
   const { code, state } = req.query;
   if (!code) {
     res.status(400).send("Código de autorização inválido.");
     return;
   }
-  const lawFirmId = state as string;
+
+  const [userId, lawFirmId, provider] = (state as string).split("_");
 
   try {
     let tokens = {
@@ -1415,11 +1647,11 @@ app.get("/api/cloud/callback/dropbox", async (req, res) => {
       expires_in: 14400,
     };
 
-    const firms = await DB.table("law_firms").find((f) => f.id === lawFirmId);
-    const firm = firms && firms.length > 0 ? firms[0] : null;
+    const client_id = process.env.DROPBOX_CLIENT_ID;
+    const client_secret = process.env.DROPBOX_CLIENT_SECRET;
 
-    if (firm && firm.dropbox_client_id && firm.dropbox_client_secret && code !== "mock_code") {
-      const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
+    if (client_id && client_secret && code !== "mock_code") {
+      const appUrl = process.env.APP_URL || `https://${req.headers.host}`;
       const redirectUri = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/dropbox`;
 
       const response = await fetch("https://api.dropboxapi.com/oauth2/token", {
@@ -1429,8 +1661,8 @@ app.get("/api/cloud/callback/dropbox", async (req, res) => {
           code: code as string,
           grant_type: "authorization_code",
           redirect_uri: redirectUri,
-          client_id: firm.dropbox_client_id,
-          client_secret: firm.dropbox_client_secret,
+          client_id,
+          client_secret,
         }),
       });
 
@@ -1447,13 +1679,36 @@ app.get("/api/cloud/callback/dropbox", async (req, res) => {
       };
     }
 
-    if (firm) {
-      await DB.table("law_firms").update(lawFirmId, {
-        dropbox_access_token: tokens.access_token,
-        dropbox_refresh_token: tokens.refresh_token,
-        dropbox_token_expires_at: (Date.now() + tokens.expires_in * 1000).toString(),
+    const accountData = {
+      user_id: userId,
+      provider: "dropbox",
+      email: code === "mock_code" ? "dropbox-mock@legalone.com" : "user-dropbox@email.com",
+      storage_name: "Dropbox",
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: (Date.now() + tokens.expires_in * 1000).toString(),
+      connected: 1,
+      updated_at: new Date().toISOString()
+    };
+
+    const existing = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === "dropbox");
+    if (existing) {
+      await DB.table("cloud_accounts").update(existing.id, accountData);
+    } else {
+      await DB.table("cloud_accounts").insert({
+        id: Math.random().toString(36).substr(2, 9),
+        ...accountData,
+        created_at: new Date().toISOString()
       });
     }
+
+    // legacy sync
+    await DB.table("law_firms").update(lawFirmId, {
+      cloud_provider: "dropbox",
+      dropbox_access_token: tokens.access_token,
+      dropbox_refresh_token: tokens.refresh_token,
+      dropbox_token_expires_at: (Date.now() + tokens.expires_in * 1000).toString(),
+    });
 
     res.send(getSuccessHTML("Dropbox"));
   } catch (err: any) {
@@ -1462,13 +1717,15 @@ app.get("/api/cloud/callback/dropbox", async (req, res) => {
   }
 });
 
+// Callback (Google Drive)
 app.get("/api/cloud/callback/gdrive", async (req, res) => {
   const { code, state } = req.query;
   if (!code) {
     res.status(400).send("Código de autorização inválido.");
     return;
   }
-  const lawFirmId = state as string;
+
+  const [userId, lawFirmId, provider] = (state as string).split("_");
 
   try {
     let tokens = {
@@ -1477,11 +1734,11 @@ app.get("/api/cloud/callback/gdrive", async (req, res) => {
       expires_in: 3600,
     };
 
-    const firms = await DB.table("law_firms").find((f) => f.id === lawFirmId);
-    const firm = firms && firms.length > 0 ? firms[0] : null;
+    const client_id = process.env.GOOGLE_CLIENT_ID;
+    const client_secret = process.env.GOOGLE_CLIENT_SECRET;
 
-    if (firm && firm.gdrive_client_id && firm.gdrive_client_secret && code !== "mock_code") {
-      const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
+    if (client_id && client_secret && code !== "mock_code") {
+      const appUrl = process.env.APP_URL || `https://${req.headers.host}`;
       const redirectUri = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/gdrive`;
 
       const response = await fetch("https://oauth2.googleapis.com/token", {
@@ -1491,8 +1748,8 @@ app.get("/api/cloud/callback/gdrive", async (req, res) => {
           code: code as string,
           grant_type: "authorization_code",
           redirect_uri: redirectUri,
-          client_id: firm.gdrive_client_id,
-          client_secret: firm.gdrive_client_secret,
+          client_id,
+          client_secret,
         }),
       });
 
@@ -1509,13 +1766,36 @@ app.get("/api/cloud/callback/gdrive", async (req, res) => {
       };
     }
 
-    if (firm) {
-      await DB.table("law_firms").update(lawFirmId, {
-        gdrive_access_token: tokens.access_token,
-        gdrive_refresh_token: tokens.refresh_token,
-        gdrive_token_expires_at: (Date.now() + tokens.expires_in * 1000).toString(),
+    const accountData = {
+      user_id: userId,
+      provider: "gdrive",
+      email: code === "mock_code" ? "gdrive-mock@legalone.com" : "user-gdrive@email.com",
+      storage_name: "Google Drive",
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: (Date.now() + tokens.expires_in * 1000).toString(),
+      connected: 1,
+      updated_at: new Date().toISOString()
+    };
+
+    const existing = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === "gdrive");
+    if (existing) {
+      await DB.table("cloud_accounts").update(existing.id, accountData);
+    } else {
+      await DB.table("cloud_accounts").insert({
+        id: Math.random().toString(36).substr(2, 9),
+        ...accountData,
+        created_at: new Date().toISOString()
       });
     }
+
+    // legacy sync
+    await DB.table("law_firms").update(lawFirmId, {
+      cloud_provider: "gdrive",
+      gdrive_access_token: tokens.access_token,
+      gdrive_refresh_token: tokens.refresh_token,
+      gdrive_token_expires_at: (Date.now() + tokens.expires_in * 1000).toString(),
+    });
 
     res.send(getSuccessHTML("Google Drive"));
   } catch (err: any) {
@@ -1524,13 +1804,15 @@ app.get("/api/cloud/callback/gdrive", async (req, res) => {
   }
 });
 
+// Callback (OneDrive)
 app.get("/api/cloud/callback/onedrive", async (req, res) => {
   const { code, state } = req.query;
   if (!code) {
     res.status(400).send("Código de autorização inválido.");
     return;
   }
-  const lawFirmId = state as string;
+
+  const [userId, lawFirmId, provider] = (state as string).split("_");
 
   try {
     let tokens = {
@@ -1539,11 +1821,11 @@ app.get("/api/cloud/callback/onedrive", async (req, res) => {
       expires_in: 3600,
     };
 
-    const firms = await DB.table("law_firms").find((f) => f.id === lawFirmId);
-    const firm = firms && firms.length > 0 ? firms[0] : null;
+    const client_id = process.env.ONEDRIVE_CLIENT_ID;
+    const client_secret = process.env.ONEDRIVE_CLIENT_SECRET;
 
-    if (firm && firm.onedrive_client_id && firm.onedrive_client_secret && code !== "mock_code") {
-      const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
+    if (client_id && client_secret && code !== "mock_code") {
+      const appUrl = process.env.APP_URL || `https://${req.headers.host}`;
       const redirectUri = `${appUrl.replace(/\/$/, "")}/api/cloud/callback/onedrive`;
 
       const response = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
@@ -1553,8 +1835,8 @@ app.get("/api/cloud/callback/onedrive", async (req, res) => {
           code: code as string,
           grant_type: "authorization_code",
           redirect_uri: redirectUri,
-          client_id: firm.onedrive_client_id,
-          client_secret: firm.onedrive_client_secret,
+          client_id,
+          client_secret,
         }),
       });
 
@@ -1571,13 +1853,36 @@ app.get("/api/cloud/callback/onedrive", async (req, res) => {
       };
     }
 
-    if (firm) {
-      await DB.table("law_firms").update(lawFirmId, {
-        onedrive_access_token: tokens.access_token,
-        onedrive_refresh_token: tokens.refresh_token,
-        onedrive_token_expires_at: (Date.now() + tokens.expires_in * 1000).toString(),
+    const accountData = {
+      user_id: userId,
+      provider: "onedrive",
+      email: code === "mock_code" ? "onedrive-mock@legalone.com" : "user-onedrive@email.com",
+      storage_name: "OneDrive",
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: (Date.now() + tokens.expires_in * 1000).toString(),
+      connected: 1,
+      updated_at: new Date().toISOString()
+    };
+
+    const existing = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === "onedrive");
+    if (existing) {
+      await DB.table("cloud_accounts").update(existing.id, accountData);
+    } else {
+      await DB.table("cloud_accounts").insert({
+        id: Math.random().toString(36).substr(2, 9),
+        ...accountData,
+        created_at: new Date().toISOString()
       });
     }
+
+    // legacy sync
+    await DB.table("law_firms").update(lawFirmId, {
+      cloud_provider: "onedrive",
+      onedrive_access_token: tokens.access_token,
+      onedrive_refresh_token: tokens.refresh_token,
+      onedrive_token_expires_at: (Date.now() + tokens.expires_in * 1000).toString(),
+    });
 
     res.send(getSuccessHTML("OneDrive"));
   } catch (err: any) {
@@ -1586,18 +1891,164 @@ app.get("/api/cloud/callback/onedrive", async (req, res) => {
   }
 });
 
-// 4. Disconnect Cloud Provider
-app.post("/api/cloud/disconnect", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+// ==========================================
+// GOOGLE CALENDAR SYNC ENDPOINTS
+// ==========================================
+
+app.get("/api/google-calendar/auth-url", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
+    const userId = req.user?.id || "1";
     const lawFirmId = req.user?.law_firm_id || "1";
-    const firms = await DB.table("law_firms").find((f) => f.id === lawFirmId);
-    if (!firms || firms.length === 0) {
-      res.status(404).json({ error: "Escritório não encontrado." });
+    const appUrl = process.env.APP_URL || `https://${req.headers.host}`;
+    
+    const client_id = process.env.GOOGLE_CLIENT_ID;
+    const client_secret = process.env.GOOGLE_CLIENT_SECRET;
+    
+    if (client_id && client_secret) {
+      const url = GoogleCalendarService.getAuthUrl(userId, lawFirmId, appUrl);
+      res.json({ url, mock: false });
+    } else {
+      const mockAuthUrl = `${appUrl.replace(/\/$/, "")}/api/google-calendar/callback?code=mock_code&state=${userId}_${lawFirmId}`;
+      res.json({ url: mockAuthUrl, mock: true });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/google-calendar/callback", async (req, res) => {
+  const { code, state } = req.query;
+  if (!code || !state) {
+    res.status(400).send("Código de autorização ou estado inválido.");
+    return;
+  }
+
+  const [userId, lawFirmId] = (state as string).split("_");
+  const appUrl = process.env.APP_URL || `https://${req.headers.host}`;
+  const redirectUri = `${appUrl.replace(/\/$/, "")}/api/google-calendar/callback`;
+
+  try {
+    if (code === "mock_code") {
+      const accountData = {
+        user_id: userId,
+        provider: "google_calendar",
+        email: "advogado-google-mock@legalone.com",
+        storage_name: "Google Calendar (Mock)",
+        access_token: "mock_calendar_access_token",
+        refresh_token: "mock_calendar_refresh_token",
+        expires_at: (Date.now() + 3600 * 1000).toString(),
+        connected: 1,
+        google_user_id: "mock_google_user_123",
+        sync_status: "connected",
+        calendar_id: JSON.stringify({
+          deadline: "mock_deadline_cal",
+          hearing: "mock_hearing_cal",
+          meeting: "mock_meeting_cal",
+          reminder: "mock_reminder_cal",
+          default: "mock_default_cal"
+        }),
+        updated_at: new Date().toISOString()
+      };
+
+      const existing = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === "google_calendar");
+      if (existing) {
+        await DB.table("cloud_accounts").update(existing.id, accountData);
+      } else {
+        await DB.table("cloud_accounts").insert({
+          id: Math.random().toString(36).substr(2, 9),
+          ...accountData,
+          created_at: new Date().toISOString()
+        });
+      }
+    } else {
+      await GoogleCalendarService.exchangeCode(code as string, redirectUri, userId, lawFirmId);
+    }
+
+    res.send(getSuccessHTML("Google Agenda"));
+  } catch (err: any) {
+    console.error("Google Calendar OAuth callback error:", err);
+    res.status(500).send(`Erro ao sincronizar com Google Agenda: ${err.message}`);
+  }
+});
+
+app.get("/api/google-calendar/status", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || "1";
+    const existing = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === "google_calendar" && a.connected === 1);
+    
+    if (existing) {
+      res.json({
+        connected: true,
+        email: existing.email || "usuario-google@email.com",
+        last_sync: existing.updated_at || existing.created_at,
+        sync_status: existing.sync_status || "synced"
+      });
+    } else {
+      res.json({ connected: false });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/google-calendar/sync", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || "1";
+    const lawFirmId = req.user?.law_firm_id || "1";
+    
+    const existing = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === "google_calendar" && a.connected === 1);
+    if (!existing) {
+      res.status(400).json({ error: "Google Agenda não está conectada para este usuário." });
       return;
     }
-    const firm = firms[0];
-    const provider = firm.cloud_provider || "none";
 
+    if (existing.access_token === "mock_calendar_access_token") {
+      console.log("[GOOGLE_CALENDAR] Running mock sync for user:", userId);
+      await DB.table("cloud_accounts").update(existing.id, { updated_at: new Date().toISOString() });
+      res.json({
+        success: true,
+        mock: true,
+        stats: { uploaded: 1, downloaded: 0, updated_local: 0, updated_google: 0, deleted_local: 0, failures: 0 },
+        duration: 120
+      });
+      return;
+    }
+
+    const result = await GoogleCalendarService.sync(userId, lawFirmId);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/google-calendar/disconnect", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || "1";
+    const existing = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === "google_calendar");
+    
+    if (existing) {
+      await DB.table("cloud_accounts").delete(existing.id);
+    }
+    
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Disconnect Cloud Provider - Receives { provider } in body
+app.post("/api/cloud/disconnect", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || "1";
+    const lawFirmId = req.user?.law_firm_id || "1";
+    const { provider = "dropbox" } = req.body;
+
+    const existing = await DB.table("cloud_accounts").findOne((a) => a.user_id === userId && a.provider === provider);
+    if (existing) {
+      await DB.table("cloud_accounts").delete(existing.id);
+    }
+
+    // Also update law_firms table
     const updateData: any = {};
     if (provider === "dropbox") {
       updateData.dropbox_access_token = null;
@@ -1612,9 +2063,9 @@ app.post("/api/cloud/disconnect", Auth.requireAuth, async (req: AuthenticatedReq
       updateData.onedrive_refresh_token = null;
       updateData.onedrive_token_expires_at = null;
     }
-
     await DB.table("law_firms").update(lawFirmId, updateData);
-    await logAudit(req, `Desconectou ${provider.toUpperCase()}`, "law_firms", lawFirmId, `Desconectou a conta ${provider} da GED`);
+
+    await logAudit(req, `Desconectou ${provider.toUpperCase()}`, "cloud_accounts", userId, `Desconectou a conta ${provider} da GED`);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1650,33 +2101,34 @@ const MOCK_ONEDRIVE_ITEMS = [
   { ".tag": "file", "name": "Recurso_Especial_STJ_Julgado.pdf", "path_lower": "/recursos_e_apelacoes_de_segunda_instancia/recurso_especial_stj_julgado.pdf", "path_display": "/Recursos e Apelações de Segunda Instância/Recurso_Especial_STJ_Julgado.pdf", "size": 542000, "client_modified": "2026-05-18T14:22:00Z" }
 ];
 
-// 5. Unified List Folder
+// 5. Unified List Folder - Receives { path, provider }
 app.post("/api/cloud/list", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
-  const { path: folderPath = "" } = req.body;
+  const { path: folderPath = "", provider = "dropbox" } = req.body;
   const search = (req.query.search as string || "").toLowerCase();
 
   try {
+    const userId = req.user?.id || "1";
     const lawFirmId = req.user?.law_firm_id || "1";
-    const firms = await DB.table("law_firms").find((f) => f.id === lawFirmId);
-    if (!firms || firms.length === 0) {
-      res.status(404).json({ error: "Escritório não encontrado." });
-      return;
-    }
-    const firm = firms[0];
-    const provider = firm.cloud_provider || "none";
 
-    if (provider === "none") {
-      res.status(400).json({ error: "Nenhum provedor de armazenamento em nuvem configurado para este escritório." });
-      return;
+    // Update active provider for the law firm
+    await DB.table("law_firms").update(lawFirmId, { cloud_provider: provider });
+
+    // Retrieve valid token
+    let token = await getValidCloudTokenForUser(userId, provider);
+    if (!token) {
+      token = await getValidCloudToken(lawFirmId, provider);
     }
 
-    const accessToken = await getValidCloudToken(lawFirmId, provider);
-    if (!accessToken) {
+    if (!token) {
       res.status(401).json({ error: `GED ${provider.toUpperCase()} não conectado.` });
       return;
     }
 
-    const isMock = accessToken.startsWith("mock_") || (provider === "dropbox" && !firm.dropbox_client_id) || (provider === "gdrive" && !firm.gdrive_client_id) || (provider === "onedrive" && !firm.onedrive_client_id);
+    const firm = (await DB.table("law_firms").find((f) => f.id === lawFirmId))[0];
+    let isMock = token.startsWith("mock_");
+    if (provider === "dropbox" && !process.env.DROPBOX_CLIENT_ID && (!firm || !firm.dropbox_client_id)) isMock = true;
+    if (provider === "gdrive" && !process.env.GOOGLE_CLIENT_ID && (!firm || !firm.gdrive_client_id)) isMock = true;
+    if (provider === "onedrive" && !process.env.ONEDRIVE_CLIENT_ID && (!firm || !firm.onedrive_client_id)) isMock = true;
 
     if (isMock) {
       let mockList = MOCK_DROPBOX_ITEMS;
@@ -1689,7 +2141,7 @@ app.post("/api/cloud/list", Auth.requireAuth, async (req: AuthenticatedRequest, 
       let items = [];
       if (search) {
         items = mockList.filter(
-          (item) => item.name.toLowerCase().includes(search) && item[".tag"] === "file"
+          (item) => item.name.toLowerCase().includes(search)
         );
       } else {
         const cleanFolderPath = folderPath.trim().replace(/\/$/, "").toLowerCase();
@@ -1708,73 +2160,30 @@ app.post("/api/cloud/list", Auth.requireAuth, async (req: AuthenticatedRequest, 
       }
       res.json({ entries: items });
     } else {
-      if (provider === "dropbox") {
-        const response = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ path: folderPath, recursive: false })
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const data = await response.json() as any;
-        res.json({ entries: data.entries || [] });
-      } else if (provider === "gdrive") {
-        let q = `'root' in parents and trashed = false`;
-        if (folderPath && folderPath !== "/" && folderPath !== "") {
-          q = `'${folderPath}' in parents and trashed = false`;
-        }
-        if (search) {
-          q = `name contains '${search}' and trashed = false`;
-        }
-
-        const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,size,modifiedTime)`, {
-          headers: { "Authorization": `Bearer ${accessToken}` }
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const data = await response.json() as any;
-        const entries = (data.files || []).map((f: any) => {
-          const isFolder = f.mimeType === "application/vnd.google-apps.folder";
-          return {
-            ".tag": isFolder ? "folder" : "file",
-            id: f.id,
-            name: f.name,
-            path_lower: f.id,
-            path_display: f.id,
-            size: Number(f.size) || 0,
-            client_modified: f.modifiedTime,
-          };
-        });
-        res.json({ entries });
-      } else if (provider === "onedrive") {
-        let url = `https://graph.microsoft.com/v1.0/me/drive/root/children`;
-        if (folderPath && folderPath !== "/" && folderPath !== "") {
-          url = `https://graph.microsoft.com/v1.0/me/drive/items/${folderPath}/children`;
-        }
-        if (search) {
-          url = `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${search}')`;
-        }
-
-        const response = await fetch(url, {
-          headers: { "Authorization": `Bearer ${accessToken}` }
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const data = await response.json() as any;
-        const entries = (data.value || []).map((f: any) => {
-          const isFolder = !!f.folder;
-          return {
-            ".tag": isFolder ? "folder" : "file",
-            id: f.id,
-            name: f.name,
-            path_lower: f.id,
-            path_display: f.id,
-            size: f.size || 0,
-            client_modified: f.lastModifiedDateTime,
-          };
-        });
-        res.json({ entries });
+      // Real API listing using StorageFactory
+      const providerInstance = await StorageFactory.getProvider(lawFirmId);
+      if (!providerInstance) {
+        res.status(400).json({ error: "Não foi possível instanciar o provedor de nuvem." });
+        return;
       }
+
+      let files = await providerInstance.listFiles(folderPath);
+
+      if (search) {
+        files = files.filter((f) => f.name.toLowerCase().includes(search));
+      }
+
+      const entries = files.map((f) => ({
+        ".tag": f.tag,
+        id: f.id,
+        name: f.name,
+        path_lower: f.path_lower || `/${f.name.toLowerCase()}`,
+        path_display: f.path_display || `/${f.name}`,
+        size: f.size,
+        client_modified: f.client_modified,
+      }));
+
+      res.json({ entries });
     }
   } catch (err: any) {
     console.error("Cloud list error:", err);
@@ -1782,31 +2191,33 @@ app.post("/api/cloud/list", Auth.requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
-// 6. Unified Get Share Link
+// 6. Unified Get Share Link / Download Link
 app.post("/api/cloud/get-link", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
-  const { path: filePath } = req.body;
+  const { path: filePath, provider = "dropbox" } = req.body;
   if (!filePath) {
     res.status(400).json({ error: "Caminho do arquivo é obrigatório." });
     return;
   }
 
   try {
+    const userId = req.user?.id || "1";
     const lawFirmId = req.user?.law_firm_id || "1";
-    const firms = await DB.table("law_firms").find((f) => f.id === lawFirmId);
-    if (!firms || firms.length === 0) {
-      res.status(404).json({ error: "Escritório não encontrado." });
-      return;
-    }
-    const firm = firms[0];
-    const provider = firm.cloud_provider || "none";
 
-    const accessToken = await getValidCloudToken(lawFirmId, provider);
-    if (!accessToken) {
+    let token = await getValidCloudTokenForUser(userId, provider);
+    if (!token) {
+      token = await getValidCloudToken(lawFirmId, provider);
+    }
+
+    if (!token) {
       res.status(401).json({ error: "Nuvem não conectada." });
       return;
     }
 
-    const isMock = accessToken.startsWith("mock_") || (provider === "dropbox" && !firm.dropbox_client_id) || (provider === "gdrive" && !firm.gdrive_client_id) || (provider === "onedrive" && !firm.onedrive_client_id);
+    const firm = (await DB.table("law_firms").find((f) => f.id === lawFirmId))[0];
+    let isMock = token.startsWith("mock_");
+    if (provider === "dropbox" && !process.env.DROPBOX_CLIENT_ID && (!firm || !firm.dropbox_client_id)) isMock = true;
+    if (provider === "gdrive" && !process.env.GOOGLE_CLIENT_ID && (!firm || !firm.gdrive_client_id)) isMock = true;
+    if (provider === "onedrive" && !process.env.ONEDRIVE_CLIENT_ID && (!firm || !firm.onedrive_client_id)) isMock = true;
 
     if (isMock) {
       res.json({
@@ -1814,48 +2225,325 @@ app.post("/api/cloud/get-link", Auth.requireAuth, async (req: AuthenticatedReque
         name: filePath.split("/").pop() || "documento.pdf"
       });
     } else {
-      if (provider === "dropbox") {
-        const response = await fetch("https://api.dropboxapi.com/2/files/get_temporary_link", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ path: filePath })
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const data = await response.json() as any;
-        res.json({ link: data.link, name: data.metadata?.name });
-      } else if (provider === "gdrive") {
-        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${filePath}?fields=webViewLink,webContentLink,name`, {
-          headers: { "Authorization": `Bearer ${accessToken}` }
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const data = await response.json() as any;
-        res.json({ link: data.webViewLink || data.webContentLink, name: data.name });
-      } else if (provider === "onedrive") {
-        const response = await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${filePath}/preview`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Content-Type": "application/json"
-          }
-        });
-        if (!response.ok) {
-          const fallbackResponse = await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${filePath}`, {
-            headers: { "Authorization": `Bearer ${accessToken}` }
-          });
-          if (!fallbackResponse.ok) throw new Error(await fallbackResponse.text());
-          const fallbackData = await fallbackResponse.json() as any;
-          res.json({ link: fallbackData.webUrl, name: fallbackData.name });
-        } else {
-          const data = await response.json() as any;
-          res.json({ link: data.getUrl, name: "Preview Documento" });
-        }
-      }
+      const appUrl = process.env.APP_URL || `https://${req.headers.host}`;
+      const downloadUrl = `${appUrl.replace(/\/$/, "")}/api/cloud/download?path=${encodeURIComponent(filePath)}&provider=${provider}`;
+      res.json({ link: downloadUrl, name: filePath.split("/").pop() || "documento.pdf" });
     }
   } catch (err: any) {
     console.error("Cloud get-link error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Download File Endpoint
+app.get("/api/cloud/download", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { path: filePath, provider = "dropbox" } = req.query;
+  if (!filePath) {
+    res.status(400).send("Caminho do arquivo é obrigatório.");
+    return;
+  }
+
+  try {
+    const lawFirmId = req.user?.law_firm_id || "1";
+    const providerInstance = await StorageFactory.getProvider(lawFirmId);
+    if (!providerInstance) {
+      res.status(400).send("Provedor não encontrado.");
+      return;
+    }
+
+    const buffer = await providerInstance.download(filePath as string);
+    const fileName = (filePath as string).split("/").pop() || "arquivo";
+    
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.send(buffer);
+  } catch (err: any) {
+    res.status(500).send(`Erro no download: ${err.message}`);
+  }
+});
+
+// Upload File Endpoint
+app.post("/api/cloud/upload", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { fileName, fileContent = "Simulado", provider = "dropbox", currentPath = "" } = req.body;
+  if (!fileName) {
+    res.status(400).json({ error: "Nome do arquivo é obrigatório." });
+    return;
+  }
+
+  try {
+    const userId = req.user?.id || "1";
+    const lawFirmId = req.user?.law_firm_id || "1";
+
+    let token = await getValidCloudTokenForUser(userId, provider);
+    if (!token) token = await getValidCloudToken(lawFirmId, provider);
+
+    const isMock = !token || token.startsWith("mock_");
+
+    if (isMock) {
+      // Add mock file to simulation lists
+      const mockItem = {
+        ".tag": "file",
+        name: fileName,
+        path_lower: `${currentPath}/${fileName}`.toLowerCase().replace(/\/+/g, "/"),
+        path_display: `${currentPath}/${fileName}`.replace(/\/+/g, "/"),
+        size: fileContent.length || 24000,
+        client_modified: new Date().toISOString()
+      };
+
+      if (provider === "dropbox") {
+        MOCK_DROPBOX_ITEMS.push(mockItem);
+      } else if (provider === "gdrive") {
+        MOCK_GDRIVE_ITEMS.push(mockItem);
+      } else if (provider === "onedrive") {
+        MOCK_ONEDRIVE_ITEMS.push(mockItem);
+      }
+
+      res.json({ success: true, entry: mockItem });
+    } else {
+      const providerInstance = await StorageFactory.getProvider(lawFirmId);
+      if (!providerInstance) {
+        res.status(400).json({ error: "Provedor não encontrado." });
+        return;
+      }
+
+      const buffer = Buffer.from(fileContent, "utf-8");
+      const uploadPath = `${currentPath}/${fileName}`.replace(/\/+/g, "/");
+      const uploadedFile = await providerInstance.upload(uploadPath, buffer);
+
+      res.json({
+        success: true,
+        entry: {
+          ".tag": uploadedFile.tag,
+          id: uploadedFile.id,
+          name: uploadedFile.name,
+          path_lower: uploadedFile.path_lower || `/${uploadedFile.name.toLowerCase()}`,
+          path_display: uploadedFile.path_display || `/${uploadedFile.name}`,
+          size: uploadedFile.size,
+          client_modified: uploadedFile.client_modified
+        }
+      });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete File/Folder Endpoint
+app.post("/api/cloud/delete", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { path: filePath, provider = "dropbox" } = req.body;
+  if (!filePath) {
+    res.status(400).json({ error: "Caminho do arquivo é obrigatório." });
+    return;
+  }
+
+  try {
+    const userId = req.user?.id || "1";
+    const lawFirmId = req.user?.law_firm_id || "1";
+
+    let token = await getValidCloudTokenForUser(userId, provider);
+    if (!token) token = await getValidCloudToken(lawFirmId, provider);
+
+    const isMock = !token || token.startsWith("mock_");
+
+    if (isMock) {
+      // Remove from mock arrays
+      const targetLower = filePath.toLowerCase();
+      if (provider === "dropbox") {
+        const idx = MOCK_DROPBOX_ITEMS.findIndex(i => i.path_lower === targetLower || i.path_lower.startsWith(targetLower + "/"));
+        if (idx !== -1) MOCK_DROPBOX_ITEMS.splice(idx, 1);
+      } else if (provider === "gdrive") {
+        const idx = MOCK_GDRIVE_ITEMS.findIndex(i => i.path_lower === targetLower || i.path_lower.startsWith(targetLower + "/"));
+        if (idx !== -1) MOCK_GDRIVE_ITEMS.splice(idx, 1);
+      } else if (provider === "onedrive") {
+        const idx = MOCK_ONEDRIVE_ITEMS.findIndex(i => i.path_lower === targetLower || i.path_lower.startsWith(targetLower + "/"));
+        if (idx !== -1) MOCK_ONEDRIVE_ITEMS.splice(idx, 1);
+      }
+      res.json({ success: true });
+    } else {
+      const providerInstance = await StorageFactory.getProvider(lawFirmId);
+      if (!providerInstance) {
+        res.status(400).json({ error: "Provedor não encontrado." });
+        return;
+      }
+
+      await providerInstance.delete(filePath);
+      res.json({ success: true });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create Folder Endpoint
+app.post("/api/cloud/create-folder", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { name, provider = "dropbox", currentPath = "" } = req.body;
+  if (!name) {
+    res.status(400).json({ error: "Nome da pasta é obrigatório." });
+    return;
+  }
+
+  try {
+    const userId = req.user?.id || "1";
+    const lawFirmId = req.user?.law_firm_id || "1";
+
+    let token = await getValidCloudTokenForUser(userId, provider);
+    if (!token) token = await getValidCloudToken(lawFirmId, provider);
+
+    const isMock = !token || token.startsWith("mock_");
+
+    if (isMock) {
+      const mockItem = {
+        ".tag": "folder",
+        name: name,
+        path_lower: `${currentPath}/${name}`.toLowerCase().replace(/\/+/g, "/"),
+        path_display: `${currentPath}/${name}`.replace(/\/+/g, "/")
+      };
+
+      if (provider === "dropbox") {
+        MOCK_DROPBOX_ITEMS.push(mockItem);
+      } else if (provider === "gdrive") {
+        MOCK_GDRIVE_ITEMS.push(mockItem);
+      } else if (provider === "onedrive") {
+        MOCK_ONEDRIVE_ITEMS.push(mockItem);
+      }
+
+      res.json({ success: true, entry: mockItem });
+    } else {
+      const providerInstance = await StorageFactory.getProvider(lawFirmId);
+      if (!providerInstance) {
+        res.status(400).json({ error: "Provedor não encontrado." });
+        return;
+      }
+
+      const uploadPath = `${currentPath}/${name}`.replace(/\/+/g, "/");
+      const folderId = await providerInstance.createFolder(uploadPath);
+
+      res.json({
+        success: true,
+        entry: {
+          ".tag": "folder",
+          id: folderId,
+          name: name,
+          path_lower: uploadPath.toLowerCase(),
+          path_display: uploadPath
+        }
+      });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Rename Endpoint
+app.post("/api/cloud/rename", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { path: filePath, name, provider = "dropbox" } = req.body;
+  if (!filePath || !name) {
+    res.status(400).json({ error: "Caminho do arquivo e novo nome são obrigatórios." });
+    return;
+  }
+
+  try {
+    const userId = req.user?.id || "1";
+    const lawFirmId = req.user?.law_firm_id || "1";
+
+    let token = await getValidCloudTokenForUser(userId, provider);
+    if (!token) token = await getValidCloudToken(lawFirmId, provider);
+
+    const isMock = !token || token.startsWith("mock_");
+
+    if (isMock) {
+      // Mock rename update in local arrays
+      const targetLower = filePath.toLowerCase();
+      const parentParts = filePath.split("/");
+      parentParts.pop();
+      const parentPath = parentParts.join("/");
+      const newPathDisplay = `${parentPath}/${name}`.replace(/\/+/g, "/");
+      const newPathLower = newPathDisplay.toLowerCase();
+
+      const updateMockList = (list: any[]) => {
+        const item = list.find(i => i.path_lower === targetLower);
+        if (item) {
+          item.name = name;
+          item.path_display = newPathDisplay;
+          item.path_lower = newPathLower;
+        }
+      };
+
+      if (provider === "dropbox") {
+        updateMockList(MOCK_DROPBOX_ITEMS);
+      } else if (provider === "gdrive") {
+        updateMockList(MOCK_GDRIVE_ITEMS);
+      } else if (provider === "onedrive") {
+        updateMockList(MOCK_ONEDRIVE_ITEMS);
+      }
+
+      res.json({ success: true });
+    } else {
+      const providerInstance = await StorageFactory.getProvider(lawFirmId);
+      if (!providerInstance) {
+        res.status(400).json({ error: "Provedor não encontrado." });
+        return;
+      }
+
+      await providerInstance.rename(filePath, name);
+      res.json({ success: true });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Move Endpoint
+app.post("/api/cloud/move", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { path: filePath, targetPath, provider = "dropbox" } = req.body;
+  if (!filePath || !targetPath) {
+    res.status(400).json({ error: "Caminho de origem e de destino são obrigatórios." });
+    return;
+  }
+
+  try {
+    const userId = req.user?.id || "1";
+    const lawFirmId = req.user?.law_firm_id || "1";
+
+    let token = await getValidCloudTokenForUser(userId, provider);
+    if (!token) token = await getValidCloudToken(lawFirmId, provider);
+
+    const isMock = !token || token.startsWith("mock_");
+
+    if (isMock) {
+      const targetLower = filePath.toLowerCase();
+      const fileName = filePath.split("/").pop() || "";
+      const finalDestDisplay = `${targetPath}/${fileName}`.replace(/\/+/g, "/");
+      const finalDestLower = finalDestDisplay.toLowerCase();
+
+      const updateMockList = (list: any[]) => {
+        const item = list.find(i => i.path_lower === targetLower);
+        if (item) {
+          item.path_display = finalDestDisplay;
+          item.path_lower = finalDestLower;
+        }
+      };
+
+      if (provider === "dropbox") {
+        updateMockList(MOCK_DROPBOX_ITEMS);
+      } else if (provider === "gdrive") {
+        updateMockList(MOCK_GDRIVE_ITEMS);
+      } else if (provider === "onedrive") {
+        updateMockList(MOCK_ONEDRIVE_ITEMS);
+      }
+
+      res.json({ success: true });
+    } else {
+      const providerInstance = await StorageFactory.getProvider(lawFirmId);
+      if (!providerInstance) {
+        res.status(400).json({ error: "Provedor não encontrado." });
+        return;
+      }
+
+      await providerInstance.move(filePath, targetPath);
+      res.json({ success: true });
+    }
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -1906,16 +2594,29 @@ app.post("/api/dropbox/get-link", Auth.requireAuth, async (req: AuthenticatedReq
 // Search & Crawl processes from courts automatically (by OAB, CNJ, or name)
 app.get("/api/processes/search-courts", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
   const query = req.query.query as string;
+  
+  // LOG: Recebi pesquisa
+  console.log(`[BACKEND] Recebi pesquisa: "${query || ""}"`);
+
   if (!query) {
+    console.warn("[BACKEND] Termo de busca vazio ou ausente.");
     res.status(400).json({ error: "O termo de busca é obrigatório." });
     return;
   }
   try {
     const results = await LegalAI.searchCourtsData(query);
     await logAudit(req, "Buscou nos Tribunais por IA/Crawler", "processes", "search_courts", `Pesquisa realizada: "${query}"`);
+    
+    // LOG: Quantidade de processos e Payload retornado
+    console.log(`[BACKEND] Quantidade de processos localizados: ${results.length}`);
+    console.log("[BACKEND] Payload enviado:", JSON.stringify(results));
+    
     res.json(results);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    // LOG: Erro e Stack completa
+    console.error(`[BACKEND] Erro: ${err.message}`);
+    console.error(`[BACKEND] Stack completa: ${err.stack}`);
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 

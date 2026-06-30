@@ -62,6 +62,7 @@ function ensureJsonDbDir() {
     "workflows.json",
     "audit_logs.json",
     "smtp_settings.json",
+    "cloud_accounts.json",
   ];
   files.forEach((file) => {
     const filePath = path.join(JSON_DB_DIR, file);
@@ -241,6 +242,10 @@ async function createMySQLTables() {
       assigned_to TEXT,
       alerts_sent TINYINT(1) DEFAULT 0,
       law_firm_id VARCHAR(255),
+      google_event_id VARCHAR(255),
+      calendar_id VARCHAR(255),
+      location TEXT,
+      sync_status VARCHAR(50) DEFAULT 'synced',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS financial (
@@ -304,11 +309,52 @@ async function createMySQLTables() {
       password VARCHAR(255) NOT NULL,
       sender_name VARCHAR(255),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS cloud_accounts (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255) NOT NULL,
+      provider VARCHAR(50) NOT NULL,
+      email VARCHAR(255),
+      storage_name VARCHAR(255),
+      access_token TEXT,
+      refresh_token TEXT,
+      expires_at VARCHAR(100),
+      connected TINYINT(1) DEFAULT 1,
+      calendar_id TEXT,
+      google_user_id VARCHAR(255),
+      sync_status VARCHAR(50),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`
   ];
 
   for (const query of queries) {
     await mysqlPool.query(query);
+  }
+
+  // Safe table alterations to add new Google Calendar columns if tables already exist
+  const alterations = [
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS google_event_id VARCHAR(255)",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS calendar_id VARCHAR(255)",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS location TEXT",
+    "ALTER TABLE events ADD COLUMN IF NOT EXISTS sync_status VARCHAR(50) DEFAULT 'synced'",
+    "ALTER TABLE cloud_accounts ADD COLUMN IF NOT EXISTS calendar_id TEXT",
+    "ALTER TABLE cloud_accounts ADD COLUMN IF NOT EXISTS google_user_id VARCHAR(255)",
+    "ALTER TABLE cloud_accounts ADD COLUMN IF NOT EXISTS sync_status VARCHAR(50)"
+  ];
+
+  for (const alt of alterations) {
+    try {
+      await mysqlPool.query(alt);
+    } catch (e: any) {
+      // Fallback if IF NOT EXISTS is not supported by MySQL server version
+      try {
+        const standardAlt = alt.replace("IF NOT EXISTS ", "");
+        await mysqlPool.query(standardAlt);
+      } catch (innerErr) {
+        // Column probably already exists, safe to ignore
+      }
+    }
   }
 }
 

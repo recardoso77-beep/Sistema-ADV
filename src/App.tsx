@@ -935,7 +935,7 @@ export default function App() {
               activeTab === "ged_dropbox" ? "bg-primary-theme text-white font-semibold" : "hover:bg-slate-800/60 hover:text-slate-200"
             }`}
           >
-            <Cloud className="w-4 h-4 text-blue-400" /> GED (Dropbox)
+            <Cloud className="w-4 h-4 text-indigo-400" /> Armazenamento em Nuvem
           </button>
 
           {hasFinancialAccess && (
