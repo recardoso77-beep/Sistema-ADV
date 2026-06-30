@@ -1,0 +1,6 @@
+{
+  "name": "Legal One Firm",
+  "description": "Sistema premium de gestão para escritórios de advocacia com processos, prazos, financeiro, documentos e Inteligência Artificial.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

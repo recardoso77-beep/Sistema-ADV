@@ -1,0 +1,44 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --theme-primary: #4f46e5;
+  --theme-secondary: #111827;
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Outfit", sans-serif;
+  
+  --color-primary-theme: var(--theme-primary);
+  --color-secondary-theme: var(--theme-secondary);
+  
+  --color-indigo-50: color-mix(in srgb, var(--theme-primary) 8%, white);
+  --color-indigo-100: color-mix(in srgb, var(--theme-primary) 15%, white);
+  --color-indigo-200: color-mix(in srgb, var(--theme-primary) 30%, white);
+  --color-indigo-300: color-mix(in srgb, var(--theme-primary) 45%, white);
+  --color-indigo-400: color-mix(in srgb, var(--theme-primary) 65%, white);
+  --color-indigo-500: var(--theme-primary);
+  --color-indigo-600: var(--theme-primary);
+  --color-indigo-700: color-mix(in srgb, var(--theme-primary) 85%, black);
+  --color-indigo-800: color-mix(in srgb, var(--theme-primary) 70%, black);
+  --color-indigo-900: var(--theme-secondary);
+  --color-indigo-950: color-mix(in srgb, var(--theme-secondary) 85%, black);
+}
+
+/* Elegant scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
