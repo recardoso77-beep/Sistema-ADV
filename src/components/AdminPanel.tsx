@@ -50,6 +50,9 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
 
   // User edit state
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [editingEmail, setEditingEmail] = useState("");
+  const [editingPassword, setEditingPassword] = useState("");
   const [editingRole, setEditingRole] = useState<any>("");
   const [editingActive, setEditingActive] = useState(true);
   const [editingFirmId, setEditingFirmId] = useState("");
@@ -218,6 +221,9 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
 
   const handleSelectUser = (user: User) => {
     setSelectedUser(user);
+    setEditingName(user.name);
+    setEditingEmail(user.email);
+    setEditingPassword("");
     setEditingRole(user.role);
     setEditingActive(user.active);
     setEditingFirmId(user.law_firm_id || "");
@@ -277,6 +283,15 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
     e.preventDefault();
     if (!selectedUser) return;
 
+    if (!editingName.trim()) {
+      alert("O nome do usuário é obrigatório.");
+      return;
+    }
+    if (!editingEmail.trim()) {
+      alert("O email do usuário é obrigatório.");
+      return;
+    }
+
     setLoadingSave(true);
     try {
       const res = await fetch(`/api/admin/users/${selectedUser.id}`, {
@@ -286,6 +301,9 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          name: editingName,
+          email: editingEmail,
+          ...(editingPassword ? { password: editingPassword } : {}),
           role: editingRole,
           active: editingActive,
           law_firm_id: editingFirmId,
@@ -858,6 +876,44 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
                 </div>
 
                 <form onSubmit={handleSaveUserPermissions} className="space-y-4 text-xs">
+                  <div className="space-y-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100 mb-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Nome do Operador</label>
+                      <input
+                        type="text"
+                        required
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        placeholder="Nome completo"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500 font-medium"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">E-mail de Acesso</label>
+                        <input
+                          type="email"
+                          required
+                          value={editingEmail}
+                          onChange={(e) => setEditingEmail(e.target.value)}
+                          placeholder="exemplo@dominio.com"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Alterar Senha (Opcional)</label>
+                        <input
+                          type="password"
+                          value={editingPassword}
+                          onChange={(e) => setEditingPassword(e.target.value)}
+                          placeholder="Deixe em branco para manter"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500 font-medium"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Nível Administrativo</label>

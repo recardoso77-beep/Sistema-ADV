@@ -51,6 +51,7 @@ export default function Processes({ processes, clients, token, onRefresh, userRo
   const [searchMode, setSearchMode] = useState<"auto" | "manual">("auto");
   const [courtQuery, setCourtQuery] = useState("");
   const [searchingCourts, setSearchingCourts] = useState(false);
+  const [courtAbortController, setCourtAbortController] = useState<AbortController | null>(null);
   const [courtSearchResults, setCourtSearchResults] = useState<any[]>([]);
   const [selectedClientForImport, setSelectedClientForImport] = useState<{[key: string]: string}>({});
 
@@ -90,23 +91,75 @@ export default function Processes({ processes, clients, token, onRefresh, userRo
 
     return "Nome";
   };
+  
+  const handleCancelSearch = () => {
+    if (courtAbortController) {
+      courtAbortController.abort();
+      setSearchingCourts(false);
+      setErrorMsg("Pesquisa cancelada pelo usuário.");
+      console.log("[FRONTEND] Pesquisa de tribunais cancelada pelo usuário.");
+    }
+  };
 
   const handleSearchCourts = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!courtQuery.trim()) return;
+    const query = courtQuery.trim();
+    if (!query) return;
+
     setSearchingCourts(true);
     setErrorMsg("");
     setCourtSearchResults([]);
 
-    // LOG: Pesquisa enviada
-    console.log(`[FRONTEND] Pesquisa enviada: "${courtQuery}"`);
+    const queryType = detectQueryType(query);
+    const url = `/api/processes/search-courts?query=${encodeURIComponent(query)}`;
+
+    // LOGS exigidos do frontend no console
+    console.log(`[FRONTEND] Valor pesquisado: "${query}"`);
+    console.log(`[FRONTEND] Tipo da pesquisa: "${queryType}"`);
+    console.log(`[FRONTEND] URL chamada: "${url}"`);
+    console.log(`[FRONTEND] Payload enviado: { query: "${query}" }`);
+
+    // Validação de entrada conforme item 18 (Número inválido)
+    if (queryType === "CNJ") {
+      const digits = query.replace(/\D/g, "");
+      if (digits.length < 14) {
+        setErrorMsg("Número inválido.");
+        setSearchingCourts(false);
+        return;
+      }
+    } else if (queryType === "OAB") {
+      if (query.length < 4) {
+        setErrorMsg("Número inválido.");
+        setSearchingCourts(false);
+        return;
+      }
+    } else {
+      if (query.length < 3) {
+        setErrorMsg("Número inválido.");
+        setSearchingCourts(false);
+        return;
+      }
+    }
+
+    const controller = new AbortController();
+    setCourtAbortController(controller);
+
+    // Timeout de 20 segundos
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      setErrorMsg("Tempo de resposta excedido.");
+      setSearchingCourts(false);
+    }, 20000);
 
     try {
-      const res = await fetch(`/api/processes/search-courts?query=${encodeURIComponent(courtQuery)}`, {
+      const res = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       // LOG: Status HTTP
       console.log(`[FRONTEND] Status HTTP recebido: ${res.status}`);
@@ -114,13 +167,13 @@ export default function Processes({ processes, clients, token, onRefresh, userRo
       if (res.ok) {
         const data = await res.json();
         
-        // LOG: Payload recebido e Quantidade de processos
+        // LOG: Payload recebido
         console.log("[FRONTEND] Payload recebido:", data);
         console.log(`[FRONTEND] Quantidade de processos retornados: ${data.length}`);
 
         setCourtSearchResults(data);
         if (data.length === 0) {
-          setErrorMsg("Nenhum processo encontrado.");
+          setErrorMsg("Processo não encontrado.");
         }
       } else {
         let errMessage = "Erro ao consultar os tribunais.";
@@ -137,26 +190,38 @@ export default function Processes({ processes, clients, token, onRefresh, userRo
           console.error(`[FRONTEND] Stack completa: ${errStack}`);
         }
 
-        // Elegant error message mapping based on status or message content
-        if (res.status === 401 || res.status === 403) {
-          setErrorMsg("Erro de autenticação. Por favor, verifique se sua sessão expirou.");
+        // Mapeamento preciso de mensagens conforme exigência do item 18
+        if (res.status === 401) {
+          setErrorMsg("Token inválido.");
+        } else if (res.status === 403) {
+          setErrorMsg("Falha de autenticação.");
         } else if (res.status === 408 || res.status === 504) {
-          setErrorMsg("Tempo limite excedido. O tribunal demorou muito para responder.");
-        } else if (res.status === 503) {
-          setErrorMsg("Tribunal indisponível. Tente novamente mais tarde.");
+          setErrorMsg("Tempo de resposta excedido.");
+        } else if (res.status === 502 || res.status === 503) {
+          setErrorMsg("Tribunal fora do ar.");
+        } else if (res.status === 500 && (errMessage.includes("indisponível") || errMessage.toLowerCase().includes("failed") || errMessage.toLowerCase().includes("api"))) {
+          setErrorMsg("API indisponível.");
         } else if (errMessage.toLowerCase().includes("key") || errMessage.toLowerCase().includes("not configured")) {
-          setErrorMsg("Erro de autenticação ou API temporariamente indisponível (Chave de API não configurada).");
+          setErrorMsg("API indisponível.");
+        } else if (errMessage.toLowerCase().includes("not found") || errMessage.toLowerCase().includes("não encontrado")) {
+          setErrorMsg("Processo não encontrado.");
         } else {
           setErrorMsg(errMessage);
         }
       }
     } catch (err: any) {
-      // LOG: Erro e Stack completa
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        // Já tratado pelo timeout ou cancelamento manual
+        return;
+      }
+      
       console.error("[FRONTEND] Erro de rede:", err.message);
       console.error("[FRONTEND] Stack completa:", err.stack);
-      setErrorMsg("API temporariamente indisponível. Por favor, verifique sua conexão de rede.");
+      setErrorMsg("API indisponível.");
     } finally {
       setSearchingCourts(false);
+      setCourtAbortController(null);
     }
   };
 
@@ -761,10 +826,11 @@ export default function Processes({ processes, clients, token, onRefresh, userRo
                         <input
                           type="text"
                           required
+                          disabled={searchingCourts}
                           placeholder="Ex: 1002345-67.2024.8.26.0100, 123456/SP ou Rodrigo Cardoso..."
                           value={courtQuery}
                           onChange={(e) => setCourtQuery(e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-800 outline-none focus:border-indigo-500 transition-all focus:ring-1 focus:ring-indigo-500"
+                          className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-800 outline-none focus:border-indigo-500 transition-all focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
                         />
                       </div>
                       <button
@@ -800,10 +866,24 @@ export default function Processes({ processes, clients, token, onRefresh, userRo
                   {searchingCourts ? (
                     <div className="py-12 flex flex-col items-center justify-center text-center">
                       <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin mb-3" />
-                      <h4 className="text-xs font-bold text-slate-700">Fazendo Varredura nos Sistemas de Justiça</h4>
-                      <p className="text-[10px] text-slate-400 mt-1 max-w-xs leading-relaxed">
-                        Consultando distribuições eletrônicas, andamentos e publicações oficiais correspondentes ao termo informado. Por favor, aguarde alguns instantes...
+                      <h4 className="text-xs font-bold text-slate-700">Pesquisando tribunais...</h4>
+                      
+                      {/* Barra de progresso animada */}
+                      <div className="w-full max-w-xs bg-slate-100 rounded-full h-1.5 my-3 overflow-hidden">
+                        <div className="bg-indigo-600 h-full rounded-full animate-pulse" style={{ width: '75%' }}></div>
+                      </div>
+
+                      <p className="text-[10px] text-slate-400 max-w-xs leading-relaxed">
+                        Consultando distribuições eletrônicas, andamentos e publicações oficiais correspondentes ao termo informado nos bancos de dados do CNJ, TJSP, TRT2, TRF3, STJ. Por favor, aguarde alguns instantes...
                       </p>
+
+                      <button
+                        type="button"
+                        onClick={handleCancelSearch}
+                        className="mt-5 px-4 py-1.5 text-[10px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-100 cursor-pointer flex items-center gap-1"
+                      >
+                        <X className="w-3 h-3" /> Cancelar Busca
+                      </button>
                     </div>
                   ) : courtSearchResults.length > 0 ? (
                     <div className="space-y-4">

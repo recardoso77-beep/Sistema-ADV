@@ -524,6 +524,39 @@ app.get("/api/auth/me", Auth.requireAuth, async (req: AuthenticatedRequest, res)
   }
 });
 
+// Update Current User profile (name, email, password)
+app.put("/api/auth/me", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: "Não autorizado" });
+      return;
+    }
+    const userId = req.user.id;
+    const { name, email, password } = req.body;
+
+    const existingUser = await DB.table("users").findOne((u) => u.id === userId);
+    if (!existingUser) {
+      res.status(404).json({ error: "Usuário não localizado." });
+      return;
+    }
+
+    const updatePayload: any = {};
+    if (name) updatePayload.name = name;
+    if (email) updatePayload.email = email;
+    if (password) {
+      updatePayload.password = await Auth.hashPassword(password);
+    }
+
+    const updatedUser = await DB.table("users").update(userId, updatePayload);
+    await logAudit(req, "Atualizou Perfil", "users", userId, `Atualizou nome/perfil do próprio usuário: ${updatedUser?.name}`);
+
+    const { password: _, ...responseUser } = updatedUser;
+    res.json(responseUser);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ==========================================
 // 2. CLIENT MANAGEMENT ENDPOINTS
@@ -669,6 +702,47 @@ app.get("/api/processes", Auth.requireAuth, async (req: AuthenticatedRequest, re
     res.json(filtered);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+function detectQueryTypeBackend(query: string): string {
+  const clean = query.trim();
+  const digitsOnly = clean.replace(/\D/g, "");
+  if (clean.includes("/")) {
+    return "OAB";
+  } else if (digitsOnly.length === 20) {
+    return "CNJ";
+  } else {
+    return "Nome";
+  }
+}
+
+// Search & Crawl processes from courts automatically (by OAB, CNJ, or name)
+app.get("/api/processes/search-courts", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
+  const query = req.query.query as string;
+  
+  const type = detectQueryTypeBackend(query || "");
+  console.log(`[BACKEND-TRIBUNAIS] [Pesquisa iniciada] Termo: "${query || ""}" | Tipo detectado: "${type}"`);
+
+  if (!query) {
+    console.warn("[BACKEND-TRIBUNAIS] Termo de busca vazio ou ausente.");
+    res.status(400).json({ error: "O termo de busca é obrigatório." });
+    return;
+  }
+  
+  try {
+    console.log(`[BACKEND-TRIBUNAIS] [API chamada] Acionando LegalAI.searchCourtsData...`);
+    const results = await LegalAI.searchCourtsData(query);
+    await logAudit(req, "Buscou nos Tribunais por IA/Crawler", "processes", "search_courts", `Pesquisa realizada: "${query}" (Tipo: ${type})`);
+    
+    console.log(`[BACKEND-TRIBUNAIS] [Resposta] Sucesso. Quantidade de processos localizados: ${results.length}`);
+    console.log(`[BACKEND-TRIBUNAIS] [Payload] Enviando para o cliente.`);
+    
+    res.json(results);
+  } catch (err: any) {
+    console.error(`[BACKEND-TRIBUNAIS] [Erro] Falha ao consultar dados dos tribunais: ${err.message}`);
+    console.error(`[BACKEND-TRIBUNAIS] [Stack] ${err.stack}`);
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 
@@ -1589,35 +1663,6 @@ app.post("/api/google-calendar/disconnect", Auth.requireAuth, async (req: Authen
 // ==========================================
 // 8. GEMINI AI SMART ASSISTANT MODULE
 // ==========================================
-
-// Search & Crawl processes from courts automatically (by OAB, CNJ, or name)
-app.get("/api/processes/search-courts", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
-  const query = req.query.query as string;
-  
-  // LOG: Recebi pesquisa
-  console.log(`[BACKEND] Recebi pesquisa: "${query || ""}"`);
-
-  if (!query) {
-    console.warn("[BACKEND] Termo de busca vazio ou ausente.");
-    res.status(400).json({ error: "O termo de busca é obrigatório." });
-    return;
-  }
-  try {
-    const results = await LegalAI.searchCourtsData(query);
-    await logAudit(req, "Buscou nos Tribunais por IA/Crawler", "processes", "search_courts", `Pesquisa realizada: "${query}"`);
-    
-    // LOG: Quantidade de processos e Payload retornado
-    console.log(`[BACKEND] Quantidade de processos localizados: ${results.length}`);
-    console.log("[BACKEND] Payload enviado:", JSON.stringify(results));
-    
-    res.json(results);
-  } catch (err: any) {
-    // LOG: Erro e Stack completa
-    console.error(`[BACKEND] Erro: ${err.message}`);
-    console.error(`[BACKEND] Stack completa: ${err.stack}`);
-    res.status(500).json({ error: err.message, stack: err.stack });
-  }
-});
 
 // AI Summarize Case
 app.post("/api/ai/summarize", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {

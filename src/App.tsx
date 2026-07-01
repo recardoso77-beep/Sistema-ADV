@@ -58,6 +58,14 @@ export default function App() {
   const [isGoogleSelectModalOpen, setIsGoogleSelectModalOpen] = useState(false);
   const [customGoogleEmail, setCustomGoogleEmail] = useState("");
 
+  // Profile Edit Modal States
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [profilePassword, setProfilePassword] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState("");
+
   // Esqueci a Senha e Redefinição de Senha
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
@@ -145,6 +153,15 @@ export default function App() {
     }
   }, [activeFirm]);
 
+  useEffect(() => {
+    if (isProfileModalOpen && user) {
+      setProfileName(user.name);
+      setProfileEmail(user.email);
+      setProfilePassword("");
+      setProfileError("");
+    }
+  }, [isProfileModalOpen, user]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginLoading(true);
@@ -218,6 +235,51 @@ export default function App() {
     setUsers([]);
     setClientProcessSelected(null);
     setActiveTab("dashboard");
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profileName.trim()) {
+      setProfileError("O nome é obrigatório.");
+      return;
+    }
+    if (!profileEmail.trim()) {
+      setProfileError("O e-mail é obrigatório.");
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setProfileError("");
+
+    try {
+      const res = await fetch("/api/auth/me", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: profileName,
+          email: profileEmail,
+          ...(profilePassword ? { password: profilePassword } : {}),
+        }),
+      });
+
+      if (res.ok) {
+        // Refresh all data to update user profile globally
+        await handleFetchAllData(token, selectedLawFirmFilter);
+        setIsProfileModalOpen(false);
+        alert("Perfil atualizado com sucesso!");
+      } else {
+        const errData = await res.json();
+        setProfileError(errData.error || "Erro ao salvar perfil.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setProfileError("Falha ao comunicar com o servidor.");
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   const handleQuickLogin = (quickEmail: string) => {
@@ -940,10 +1002,14 @@ export default function App() {
 
           {/* User profile details and logout */}
           {user && (
-            <div className="hidden sm:flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-xl border border-slate-700/60 text-xs">
+            <button
+              onClick={() => setIsProfileModalOpen(true)}
+              className="hidden sm:flex items-center gap-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/60 px-3 py-1 rounded-xl text-xs font-semibold text-slate-200 cursor-pointer transition-colors"
+              title="Clique para alterar seu nome e senha"
+            >
               <UserCheck className="w-4 h-4 text-indigo-400" />
-              <span className="font-semibold text-slate-200">{user.name} ({user.role.toUpperCase()})</span>
-            </div>
+              <span>{user.name} ({user.role.toUpperCase()})</span>
+            </button>
           )}
 
           <button
@@ -1173,6 +1239,101 @@ export default function App() {
         onClose={() => setIsAiOpen(false)}
         token={token}
       />
+
+      {/* Modal para alteração do perfil do próprio usuário */}
+      <AnimatePresence>
+        {isProfileModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl border border-indigo-100 max-w-md w-full shadow-xl overflow-hidden text-slate-800"
+            >
+              <div className="bg-indigo-900 px-6 py-4 text-white flex justify-between items-center">
+                <div>
+                  <h3 className="font-bold text-sm">Editar Seu Perfil</h3>
+                  <p className="text-[10px] text-indigo-200 mt-0.5">Altere seu nome e dados de acesso</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsProfileModalOpen(false)}
+                  className="p-1 hover:bg-white/10 rounded-lg transition-colors cursor-pointer text-indigo-200 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveProfile} className="p-6 space-y-4 text-xs">
+                {profileError && (
+                  <div className="p-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl font-medium">
+                    {profileError}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    Nome Completo
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    placeholder="Seu nome"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    E-mail de Acesso
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={profileEmail}
+                    onChange={(e) => setProfileEmail(e.target.value)}
+                    placeholder="exemplo@dominio.com"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    Nova Senha (Opcional)
+                  </label>
+                  <input
+                    type="password"
+                    value={profilePassword}
+                    onChange={(e) => setProfilePassword(e.target.value)}
+                    placeholder="Deixe em branco para manter a atual"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500 font-medium"
+                  />
+                  <p className="text-[9px] text-slate-400 mt-0.5">Preencha apenas se quiser alterar sua senha.</p>
+                </div>
+
+                <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsProfileModalOpen(false)}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold px-4 py-2 rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingProfile}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-5 py-2 rounded-xl shadow-sm cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingProfile ? "Salvando..." : "Salvar Alterações"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
