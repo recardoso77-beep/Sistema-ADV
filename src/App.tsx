@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Scale, Users, Calendar, FileText, TrendingUp, Zap, ShieldAlert, Sparkles, LogOut, LayoutDashboard, UserCheck, Bot, Menu, X, ArrowUpRight, Copy, CheckCircle2, FileSignature, Database, Newspaper, Cloud, KeyRound } from "lucide-react";
+import { Scale, Users, Calendar, FileText, TrendingUp, Zap, ShieldAlert, Sparkles, LogOut, LayoutDashboard, UserCheck, Bot, Menu, X, ArrowUpRight, Copy, CheckCircle2, FileSignature, Database, Newspaper, Cloud, KeyRound, Calculator, BarChart3 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Client, Process, AgendaEvent, FinancialItem, DocumentItem, Workflow, User, LawFirm } from "./types";
 
@@ -14,6 +14,8 @@ import Financial from "./components/Financial";
 import Workflows from "./components/Workflows";
 import AdminPanel from "./components/AdminPanel";
 import AiAssistant from "./components/AiAssistant";
+import Calculos from "./components/Calculos";
+import ReportsBI from "./components/ReportsBI";
 
 function isColorLight(hex: string): boolean {
   if (!hex) return false;
@@ -1146,6 +1148,15 @@ export default function App() {
             <FileText className="w-4 h-4" /> Documentos e Assinatura
           </button>
 
+          <button
+            onClick={() => { setActiveTab("calculos"); setMobileMenuOpen(false); }}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+              activeTab === "calculos" ? `${sidebarActiveBg} ${sidebarActiveTextColor} shadow-sm` : `${sidebarTextColor} ${sidebarHoverBg}`
+            }`}
+          >
+            <Calculator className="w-4 h-4" /> Cálculos Judiciais
+          </button>
+
           {hasFinancialAccess && (
             <>
               <div className={`text-[10px] font-semibold uppercase tracking-wider px-3 pt-6 mb-3 ${isPrimaryLight ? 'text-slate-600' : 'text-white/50'}`}>Financeiro & Automação</div>
@@ -1157,6 +1168,15 @@ export default function App() {
                 }`}
               >
                 <TrendingUp className="w-4 h-4" /> Fluxo de Caixa e Pix
+              </button>
+
+              <button
+                onClick={() => { setActiveTab("reports_bi"); setMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+                  activeTab === "reports_bi" ? `${sidebarActiveBg} ${sidebarActiveTextColor} shadow-sm` : `${sidebarTextColor} ${sidebarHoverBg}`
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" /> Relatórios & BI
               </button>
             </>
           )}
@@ -1282,6 +1302,25 @@ export default function App() {
               workflows={workflows}
               token={token}
               onRefresh={() => handleFetchAllData(token)}
+              userRole={user.role}
+            />
+          )}
+
+          {activeTab === "calculos" && (
+            <Calculos
+              activeFirm={activeFirm}
+              userRole={user.role}
+            />
+          )}
+
+          {activeTab === "reports_bi" && hasFinancialAccess && (
+            <ReportsBI
+              processes={processes}
+              clients={clients}
+              finances={finances}
+              documents={documents}
+              events={events}
+              activeFirm={activeFirm}
               userRole={user.role}
             />
           )}
