@@ -357,7 +357,7 @@ export default function App() {
                 <Scale className="w-6 h-6 animate-spin" />
               </div>
               <h1 className="text-2xl font-bold tracking-tight text-white font-sans mt-3">Redefinir Senha</h1>
-              <p className="text-xs text-slate-400">Cadastre sua nova senha corporativa de acesso ao Legal One.</p>
+              <p className="text-xs text-slate-400">Cadastre sua nova senha corporativa de acesso ao Legal Prime.</p>
             </div>
 
             <form onSubmit={handleResetPassword} className="space-y-4">
@@ -435,7 +435,7 @@ export default function App() {
             <div className="h-12 w-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white mx-auto shadow-lg shadow-indigo-600/20">
               <Scale className="w-6 h-6" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-white font-sans mt-3">Legal One Firm</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-white font-sans mt-3">Legal Prime</h1>
             <p className="text-xs text-slate-400">Entre na plataforma administrativa de controle de processos e prazos.</p>
           </div>
 

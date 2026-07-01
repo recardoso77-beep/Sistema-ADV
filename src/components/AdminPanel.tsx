@@ -21,7 +21,7 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
   const [smtpSecure, setSmtpSecure] = useState(false);
   const [smtpUser, setSmtpUser] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
-  const [smtpSenderName, setSmtpSenderName] = useState("Legal One Firm");
+  const [smtpSenderName, setSmtpSenderName] = useState("Legal Prime");
   const [smtpLoading, setSmtpLoading] = useState(false);
   const [smtpSaving, setSmtpSaving] = useState(false);
   const [smtpSuccess, setSmtpSuccess] = useState<string | null>(null);
@@ -100,7 +100,7 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
         setSmtpSecure(data.secure === 1 || data.secure === true);
         setSmtpUser(data.user || "");
         setSmtpPassword(data.password || "");
-        setSmtpSenderName(data.sender_name || "Legal One Firm");
+        setSmtpSenderName(data.sender_name || "Legal Prime");
       }
     } catch (e: any) {
       setSmtpError("Erro ao carregar configurações de e-mail.");
@@ -1824,7 +1824,7 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
               <div>
                 <p className="font-semibold text-amber-950 font-sans">Dica do Ambiente de Preview</p>
                 <p className="mt-0.5">
-                  Por padrão, o Legal One Firm vem com um servidor SMTP de demonstração fictício (`smtp.legalonefirm.com.br`). Quando você dispara testes ou solicita a redefinição de senha com este e-mail fictício, o sistema simula o disparo gerando os logs e o link no terminal e na interface do usuário com total interatividade.
+                  Por padrão, o Legal Prime vem com um servidor SMTP de demonstração fictício (`smtp.legalprime.com.br`). Quando você dispara testes ou solicita a redefinição de senha com este e-mail fictício, o sistema simula o disparo gerando os logs e o link no terminal e na interface do usuário com total interatividade.
                 </p>
                 <p className="mt-1 font-semibold text-amber-900">
                   Cadastre dados reais de SMTP (como de um provedor HostGator, Gmail, Locaweb, etc.) para testar envios corporativos em tempo real.

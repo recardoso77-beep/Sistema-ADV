@@ -18,7 +18,7 @@ export default function AiAssistant({ isOpen, onClose, token, contextText }: AiA
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "model",
-      text: "Olá! Sou o **Legal One AI**, seu copiloto jurídico inteligente. Posso ajudar você a redigir contratos, resumir processos longos, analisar riscos contratuais ou explicar termos em linguagem simples para seus clientes. O que deseja fazer hoje?",
+      text: "Olá! Sou o **Legal Prime AI**, seu copiloto jurídico inteligente. Posso ajudar você a redigir contratos, resumir processos longos, analisar riscos contratuais ou explicar termos em linguagem simples para seus clientes. O que deseja fazer hoje?",
     },
   ]);
   const [input, setInput] = useState("");
@@ -126,7 +126,7 @@ export default function AiAssistant({ isOpen, onClose, token, contextText }: AiA
                 </div>
                 <div>
                   <h3 className="font-semibold text-sm tracking-tight text-white flex items-center gap-1.5">
-                    Legal One AI <span className="text-[10px] bg-indigo-500/30 text-indigo-300 px-1.5 py-0.5 rounded-full font-medium">Copilot</span>
+                    Legal Prime AI <span className="text-[10px] bg-indigo-500/30 text-indigo-300 px-1.5 py-0.5 rounded-full font-medium">Copilot</span>
                   </h3>
                   <p className="text-[11px] text-slate-400 flex items-center gap-1">
                     <ShieldCheck className="w-3 h-3 text-emerald-400" /> Ativo em conformidade LGPD

@@ -119,12 +119,12 @@ function ensureJsonDbDir() {
             [
               {
                 id: "1",
-                host: "smtp.legalonefirm.com.br",
+                host: "smtp.legalprime.com.br",
                 port: 587,
                 secure: false,
-                user: "notificacoes@legalonefirm.com.br",
+                user: "notificacoes@legalprime.com.br",
                 password: "SenhaSeguraSMTP123",
-                sender_name: "Legal One Firm",
+                sender_name: "Legal Prime",
                 created_at: new Date().toISOString(),
               }
             ],

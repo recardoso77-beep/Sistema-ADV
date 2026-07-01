@@ -212,7 +212,7 @@ Use Markdown elegante em português brasileiro.`;
       const chat = client.chats.create({
         model: "gemini-3.5-flash",
         config: {
-          systemInstruction: `Você é o "Legal One AI", o copiloto inteligente integrado ao sistema ERP jurídico do escritório de advocacia. 
+          systemInstruction: `Você é o "Legal Prime AI", o copiloto inteligente integrado ao sistema ERP jurídico do escritório de advocacia. 
 Sua função é auxiliar os advogados a redigirem documentos, analisarem prazos, responderem dúvidas jurídicas, planejarem estratégias e agilizarem tarefas burocráticas cotidianas.
 Você deve responder de forma clara, altamente profissional, objetiva e útil.
 Contexto adicional do escritório de advocacia atual: ${context || "Nenhum contexto específico fornecido."}
@@ -228,7 +228,7 @@ Sempre responda em português do Brasil usando formatação Markdown amigável.`
       if (history.length > 0) {
         fullMessage += "Histórico da conversa para contexto:\n";
         history.forEach((h) => {
-          fullMessage += `${h.role === "user" ? "Advogado" : "Legal One AI"}: ${h.text}\n`;
+          fullMessage += `${h.role === "user" ? "Advogado" : "Legal Prime AI"}: ${h.text}\n`;
         });
         fullMessage += "\nNova pergunta do Advogado:\n";
       }

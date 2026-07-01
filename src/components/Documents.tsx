@@ -1033,7 +1033,7 @@ export default function Documents({ documents, clients, processes, token, onRefr
                         <div className="space-y-3">
                           <p className="font-bold text-center text-sm uppercase py-2">INSTRUMENTO PARTICULAR DE PROCURAÇÃO AD JUDICIA ET EXTRA</p>
                           <p>
-                            <strong>OUTORGANTE:</strong> Representado pelo cliente vinculado no Legal One ERP.
+                            <strong>OUTORGANTE:</strong> Representado pelo cliente vinculado no Legal Prime ERP.
                           </p>
                           <p>
                             <strong>OUTORGADOS:</strong> Os advogados integrantes de <strong>Cardoso & Mendes Advogados Associados</strong>, 

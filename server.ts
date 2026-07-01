@@ -133,7 +133,7 @@ app.get("/api/download/full-deploy", (req, res) => {
 // Rota para baixar o banco de dados em formato de dump SQL completo
 app.get("/api/download/sql", async (req, res) => {
   try {
-    let sqlContent = `-- SQL Dump para Legal One Firm\n`;
+    let sqlContent = `-- SQL Dump para Legal Prime\n`;
     sqlContent += `-- Gerado em ${new Date().toISOString()}\n\n`;
     
     // Definição das tabelas para PostgreSQL ou MySQL
@@ -1852,8 +1852,8 @@ async function sendEmailViaSMTP(to: string, subject: string, html: string, lawFi
       smtp = await DB.table("smtp_settings").findOne(() => true);
     }
 
-    if (!smtp || !smtp.host || smtp.host.includes("legalonefirm.com.br") || (smtp.user && smtp.user.includes("notificacoes@legalonefirm.com.br"))) {
-      console.log(`[Simulação de E-mail] De: ${smtp?.sender_name || "Legal One Firm"} <${smtp?.user || "notificacoes@legalonefirm.com.br"}>`);
+    if (!smtp || !smtp.host || smtp.host.includes("legalprime.com.br") || (smtp.user && smtp.user.includes("notificacoes@legalprime.com.br"))) {
+      console.log(`[Simulação de E-mail] De: ${smtp?.sender_name || "Legal Prime"} <${smtp?.user || "notificacoes@legalprime.com.br"}>`);
       console.log(`[Simulação de E-mail] Para: ${to}`);
       console.log(`[Simulação de E-mail] Assunto: ${subject}`);
       console.log(`[Simulação de E-mail] Conteúdo: ${html}`);
@@ -1871,7 +1871,7 @@ async function sendEmailViaSMTP(to: string, subject: string, html: string, lawFi
     });
 
     const info = await transporter.sendMail({
-      from: `"${smtp.sender_name || "Legal One"}" <${smtp.user}>`,
+      from: `"${smtp.sender_name || "Legal Prime"}" <${smtp.user}>`,
       to,
       subject,
       html,
@@ -1891,12 +1891,12 @@ app.get("/api/admin/smtp", Auth.requireAuth, Auth.requireRoles(["admin", "partne
     if (!smtp) {
       smtp = {
         id: "1",
-        host: "smtp.legalonefirm.com.br",
+        host: "smtp.legalprime.com.br",
         port: 587,
         secure: 0,
-        user: "notificacoes@legalonefirm.com.br",
+        user: "notificacoes@legalprime.com.br",
         password: "SenhaSeguraSMTP123",
-        sender_name: "Legal One Firm"
+        sender_name: "Legal Prime"
       };
       await DB.table("smtp_settings").insert(smtp);
     }
@@ -1922,7 +1922,7 @@ app.post("/api/admin/smtp", Auth.requireAuth, Auth.requireRoles(["admin", "partn
       secure: secure ? 1 : 0,
       user,
       password: password || (smtp ? smtp.password : ""),
-      sender_name: sender_name || "Legal One Firm"
+      sender_name: sender_name || "Legal Prime"
     };
 
     if (smtp) {
@@ -1948,12 +1948,12 @@ app.post("/api/admin/smtp/test", Auth.requireAuth, Auth.requireRoles(["admin", "
 
   try {
     const smtp = await DB.table("smtp_settings").findOne(() => true);
-    const subject = "E-mail de Teste de Conexão SMTP - Legal One ERP";
+    const subject = "E-mail de Teste de Conexão SMTP - Legal Prime ERP";
     const html = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
         <h2 style="color: #4f46e5; margin-bottom: 16px;">Conexão Estabelecida com Sucesso! 🚀</h2>
         <p>Olá,</p>
-        <p>Este é um e-mail de teste enviado pelo sistema <strong>Legal One Firm ERP</strong>.</p>
+        <p>Este é um e-mail de teste enviado pelo sistema <strong>Legal Prime ERP</strong>.</p>
         <p>Se você recebeu este e-mail, significa que as configurações do seu servidor SMTP estão corretas e o sistema está pronto para realizar envios de notificações e redefinições de senha corporativa.</p>
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
         <p style="font-size: 11px; color: #64748b;">Configurações Utilizadas:</p>
@@ -1961,7 +1961,7 @@ app.post("/api/admin/smtp/test", Auth.requireAuth, Auth.requireRoles(["admin", "
           <li><strong>Servidor Host:</strong> ${smtp?.host || "Não definido"}</li>
           <li><strong>Porta:</strong> ${smtp?.port || "Não definido"}</li>
           <li><strong>Usuário:</strong> ${smtp?.user || "Não definido"}</li>
-          <li><strong>Remetente:</strong> ${smtp?.sender_name || "Legal One"}</li>
+          <li><strong>Remetente:</strong> ${smtp?.sender_name || "Legal Prime"}</li>
         </ul>
       </div>
     `;
@@ -2004,13 +2004,13 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     const origin = req.headers.referer || req.headers.origin || "http://localhost:3000";
     const resetLink = `${origin.split("?")[0]}?resetToken=${resetToken}&email=${encodeURIComponent(user.email)}`;
 
-    const subject = "Recuperação de Senha Corporativa - Legal One Firm";
+    const subject = "Recuperação de Senha Corporativa - Legal Prime";
     const html = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
         <div style="text-align: center; margin-bottom: 24px;">
           <div style="background-color: #4f46e5; width: 48px; height: 48px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold;">⚖️</div>
           <h2 style="color: #0f172a; margin-top: 12px; margin-bottom: 4px;">Recuperação de Senha</h2>
-          <p style="color: #64748b; font-size: 14px; margin-top: 0;">Legal One Firm ERP</p>
+          <p style="color: #64748b; font-size: 14px; margin-top: 0;">Legal Prime ERP</p>
         </div>
         <p>Olá, <strong>${user.name}</strong>,</p>
         <p>Recebemos uma solicitação para redefinir a sua senha corporativa de acesso ao painel do escritório.</p>
@@ -2120,11 +2120,11 @@ async function run() {
 
   if (process.env.PORT) {
     app.listen(process.env.PORT, () => {
-      console.log(`[Legal One Firm ERP] running on dynamic port ${process.env.PORT}`);
+      console.log(`[Legal Prime ERP] running on dynamic port ${process.env.PORT}`);
     });
   } else {
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`[Legal One Firm ERP] running successfully on http://localhost:${PORT}`);
+      console.log(`[Legal Prime ERP] running successfully on http://localhost:${PORT}`);
     });
   }
 }
