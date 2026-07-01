@@ -142,7 +142,7 @@ app.get("/api/download/sql", async (req, res) => {
     // Definição das tabelas para PostgreSQL ou MySQL
     sqlContent += `-- 0. Tabela law_firms\n`;
     sqlContent += `DROP TABLE IF EXISTS law_firms;\n`;
-    sqlContent += `CREATE TABLE IF NOT EXISTS law_firms (\n  id VARCHAR(255) PRIMARY KEY,\n  name VARCHAR(255) NOT NULL,\n  cnpj VARCHAR(50),\n  licenses INT DEFAULT 5,\n  active TINYINT(1) DEFAULT 1,\n  logo_url TEXT,\n  primary_color VARCHAR(50),\n  secondary_color VARCHAR(50),\n  cloud_provider VARCHAR(50),\n  dropbox_client_id TEXT,\n  dropbox_client_secret TEXT,\n  gdrive_client_id TEXT,\n  gdrive_client_secret TEXT,\n  onedrive_client_id TEXT,\n  onedrive_client_secret TEXT,\n  smtp_host TEXT,\n  smtp_port INT,\n  smtp_user TEXT,\n  smtp_pass TEXT,\n  smtp_sender TEXT,\n  smtp_secure TINYINT(1) DEFAULT 0,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n);\n\n`;
+    sqlContent += `CREATE TABLE IF NOT EXISTS law_firms (\n  id VARCHAR(255) PRIMARY KEY,\n  name VARCHAR(255) NOT NULL,\n  cnpj VARCHAR(50),\n  licenses INT DEFAULT 5,\n  active TINYINT(1) DEFAULT 1,\n  logo_url TEXT,\n  favicon_url TEXT,\n  primary_color VARCHAR(50), \n  secondary_color VARCHAR(50),\n  cloud_provider VARCHAR(50),\n  dropbox_client_id TEXT,\n  dropbox_client_secret TEXT,\n  gdrive_client_id TEXT,\n  gdrive_client_secret TEXT,\n  onedrive_client_id TEXT,\n  onedrive_client_secret TEXT,\n  smtp_host TEXT,\n  smtp_port INT,\n  smtp_user TEXT,\n  smtp_pass TEXT,\n  smtp_sender TEXT,\n  smtp_secure TINYINT(1) DEFAULT 0,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n);\n\n`;
 
     sqlContent += `-- 1. Tabela users\n`;
     sqlContent += `DROP TABLE IF EXISTS users;\n`;
@@ -394,7 +394,8 @@ app.post("/api/auth/login", async (req, res) => {
           name: lawFirm.name,
           primary_color: lawFirm.primary_color || "#4f46e5",
           secondary_color: lawFirm.secondary_color || "#111827",
-          logo_url: lawFirm.logo_url
+          logo_url: lawFirm.logo_url,
+          favicon_url: lawFirm.favicon_url
         } : null
       }
     });
@@ -450,7 +451,8 @@ app.post("/api/auth/login/google", async (req, res) => {
           name: lawFirm.name,
           primary_color: lawFirm.primary_color || "#4f46e5",
           secondary_color: lawFirm.secondary_color || "#111827",
-          logo_url: lawFirm.logo_url
+          logo_url: lawFirm.logo_url,
+          favicon_url: lawFirm.favicon_url
         } : null
       }
     });
@@ -515,7 +517,8 @@ app.get("/api/auth/me", Auth.requireAuth, async (req: AuthenticatedRequest, res)
           cnpj: lawFirm.cnpj,
           primary_color: lawFirm.primary_color || "#4f46e5",
           secondary_color: lawFirm.secondary_color || "#111827",
-          logo_url: lawFirm.logo_url
+          logo_url: lawFirm.logo_url,
+          favicon_url: lawFirm.favicon_url
         } : null
       }
     });
@@ -1961,7 +1964,7 @@ app.get("/api/admin/law-firms", Auth.requireAuth, async (req: AuthenticatedReque
 app.post("/api/admin/law-firms", Auth.requireAuth, Auth.requireRoles(["admin"]), async (req: AuthenticatedRequest, res) => {
   try {
     const { 
-      name, cnpj, licenses, active, logo_url, primary_color, secondary_color,
+      name, cnpj, licenses, active, logo_url, favicon_url, primary_color, secondary_color,
       cloud_provider,
       dropbox_client_id, dropbox_client_secret,
       gdrive_client_id, gdrive_client_secret,
@@ -1978,6 +1981,7 @@ app.post("/api/admin/law-firms", Auth.requireAuth, Auth.requireRoles(["admin"]),
       licenses: Number(licenses) || 5,
       active: active !== false,
       logo_url: logo_url || "",
+      favicon_url: favicon_url || "",
       primary_color: primary_color || "#4f46e5",
       secondary_color: secondary_color || "#111827",
       cloud_provider: cloud_provider || "none",

@@ -6,6 +6,7 @@ export interface LawFirm {
   active: boolean;
   created_at: string;
   logo_url?: string;
+  favicon_url?: string;
   primary_color?: string;
   secondary_color?: string;
   smtp_host?: string | null;

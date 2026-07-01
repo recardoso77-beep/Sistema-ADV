@@ -1,6 +1,24 @@
 import React, { useState } from "react";
 import { FileText, Folder, Plus, X, Search, Sparkles, FileSignature, ShieldCheck, Check, Info, FileCode, Edit3, ClipboardList, Eye, Cloud } from "lucide-react";
-import { DocumentItem, Client, Process } from "../types";
+import { DocumentItem, Client, Process, LawFirm } from "../types";
+
+function isColorLight(hex: string): boolean {
+  if (!hex) return false;
+  const cleaned = hex.replace("#", "");
+  if (cleaned.length === 3) {
+    const r = parseInt(cleaned[0] + cleaned[0], 16);
+    const g = parseInt(cleaned[1] + cleaned[1], 16);
+    const b = parseInt(cleaned[2] + cleaned[2], 16);
+    return (r * 0.299 + g * 0.587 + b * 0.114) > 186;
+  }
+  if (cleaned.length === 6) {
+    const r = parseInt(cleaned.slice(0, 2), 16);
+    const g = parseInt(cleaned.slice(2, 4), 16);
+    const b = parseInt(cleaned.slice(4, 6), 16);
+    return (r * 0.299 + g * 0.587 + b * 0.114) > 186;
+  }
+  return false;
+}
 
 interface DocumentsProps {
   documents: DocumentItem[];
@@ -9,9 +27,10 @@ interface DocumentsProps {
   token: string;
   onRefresh: () => Promise<void>;
   userRole: string;
+  activeFirm?: LawFirm;
 }
 
-export default function Documents({ documents, clients, processes, token, onRefresh, userRole }: DocumentsProps) {
+export default function Documents({ documents, clients, processes, token, onRefresh, userRole, activeFirm }: DocumentsProps) {
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState<"all" | "Contrato" | "Procuração" | "Petição" | "Parecer">("all");
   
@@ -293,65 +312,113 @@ export default function Documents({ documents, clients, processes, token, onRefr
           <p className="text-xs text-slate-400 mt-1">Armazene contratos, peças jurídicas, e gerencie assinaturas de forma ágil e segura.</p>
         </div>
         
-        {userRole !== "client" && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setIsContractModalOpen(true)}
-              className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm border border-slate-700/50"
-            >
-              <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" /> Minutar Contrato IA
-            </button>
-            <button
-              onClick={() => setIsPetitionModalOpen(true)}
-              className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm border border-slate-700/50"
-            >
-              <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" /> Minutar Petição IA
-            </button>
-            <button
-              onClick={() => setIsUploadModalOpen(true)}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-            >
-              <Plus className="w-4 h-4" /> Registrar Arquivo
-            </button>
-          </div>
-        )}
+        {userRole !== "client" && (() => {
+          const isPrimaryLight = isColorLight(activeFirm?.primary_color || "#4f46e5");
+          const isSecondaryLight = isColorLight(activeFirm?.secondary_color || "#111827");
+          
+          const primaryBtnBg = 'var(--theme-primary)';
+          const primaryBtnTextColor = isPrimaryLight ? 'text-slate-900' : 'text-white';
+          const primaryBtnSparklesColor = isPrimaryLight ? 'text-slate-800' : 'text-slate-200';
+          
+          const secondaryBtnBg = 'var(--theme-secondary)';
+          const secondaryBtnTextColor = isSecondaryLight ? 'text-slate-900' : 'text-white';
+
+          return (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setIsContractModalOpen(true)}
+                className={`text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-sm border ${primaryBtnTextColor} hover:opacity-90`}
+                style={{ 
+                  backgroundColor: primaryBtnBg,
+                  borderColor: isPrimaryLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'
+                }}
+              >
+                <Sparkles className={`w-4 h-4 animate-pulse ${primaryBtnSparklesColor}`} /> Minutar Contrato IA
+              </button>
+              <button
+                onClick={() => setIsPetitionModalOpen(true)}
+                className={`text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-sm border ${primaryBtnTextColor} hover:opacity-90`}
+                style={{ 
+                  backgroundColor: primaryBtnBg,
+                  borderColor: isPrimaryLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'
+                }}
+              >
+                <Sparkles className={`w-4 h-4 animate-pulse ${primaryBtnSparklesColor}`} /> Minutar Petição IA
+              </button>
+              <button
+                onClick={() => setIsUploadModalOpen(true)}
+                className={`text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${secondaryBtnTextColor} hover:opacity-90`}
+                style={{ backgroundColor: secondaryBtnBg }}
+              >
+                <Plus className="w-4 h-4" /> Registrar Arquivo
+              </button>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Painel de Integração D4Sign (Oficial) */}
-      {userRole !== "client" && (
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-white shadow-lg overflow-hidden relative">
-          <div className="absolute right-0 top-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-xl">
-              <FileSignature className="w-5 h-5 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-xs sm:text-sm font-semibold tracking-tight">Integração Oficial D4Sign</h3>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold ${
-                  d4signEnabled 
-                    ? "bg-emerald-500/20 text-emerald-400" 
-                    : "bg-slate-700 text-slate-300"
-                }`}>
-                  {d4signEnabled ? "CONECTADO" : "INATIVO"}
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                {d4signEnabled 
-                  ? `Vinculado ao cofre UUID: ${d4signSafeUuid.slice(0, 8)}... Pronto para disparar assinaturas com validade jurídica.`
-                  : "Conecte sua conta D4Sign para enviar contratos para assinatura eletrônica integrada."
-                }
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setIsD4signConfigOpen(true)}
-            className="text-xs font-semibold px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-colors shrink-0 shadow-sm"
+      {userRole !== "client" && (() => {
+        const isPrimaryLight = isColorLight(activeFirm?.primary_color || "#4f46e5");
+        const isSecondaryLight = isColorLight(activeFirm?.secondary_color || "#111827");
+        
+        const bannerBg = 'var(--theme-primary)';
+        const bannerTextColor = isPrimaryLight ? "text-slate-900" : "text-white";
+        const bannerMutedTextColor = isPrimaryLight ? "text-slate-600" : "text-slate-300";
+        
+        const configBtnBg = 'var(--theme-secondary)';
+
+        return (
+          <div 
+            className="p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-lg overflow-hidden relative border transition-all"
+            style={{ 
+              backgroundColor: bannerBg,
+              borderColor: isPrimaryLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'
+            }}
           >
-            Configurar D4Sign
-          </button>
-        </div>
-      )}
+            <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-2xl pointer-events-none"></div>
+            <div className="flex items-center gap-3">
+              <div 
+                className="p-2.5 rounded-xl border"
+                style={{ 
+                  backgroundColor: isPrimaryLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.1)',
+                  borderColor: isPrimaryLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'
+                }}
+              >
+                <FileSignature className={`w-5 h-5 animate-pulse ${isPrimaryLight ? 'text-slate-800' : 'text-white'}`} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className={`text-xs sm:text-sm font-semibold tracking-tight ${bannerTextColor}`}>Integração Oficial D4Sign</h3>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold ${
+                    d4signEnabled 
+                      ? "bg-emerald-500/20 text-emerald-600" 
+                      : isPrimaryLight ? "bg-slate-900/10 text-slate-800" : "bg-white/10 text-slate-300"
+                  }`}>
+                    {d4signEnabled ? "CONECTADO" : "INATIVO"}
+                  </span>
+                </div>
+                <p className={`text-[10px] mt-0.5 ${bannerMutedTextColor}`}>
+                  {d4signEnabled 
+                    ? `Vinculado ao cofre UUID: ${d4signSafeUuid.slice(0, 8)}... Pronto para disparar assinaturas com validade jurídica.`
+                    : "Conecte sua conta D4Sign para enviar contratos para assinatura eletrônica integrada."
+                  }
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsD4signConfigOpen(true)}
+              className="text-xs font-semibold px-4 py-2 rounded-xl transition-colors shrink-0 shadow-sm hover:opacity-95"
+              style={{ 
+                backgroundColor: configBtnBg,
+                color: isSecondaryLight ? '#0f172a' : '#ffffff'
+              }}
+            >
+              Configurar D4Sign
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Filter panel */}
       <div className="bg-white border border-slate-200 p-4 rounded-2xl flex flex-col md:flex-row gap-3 items-center shadow-2xs">

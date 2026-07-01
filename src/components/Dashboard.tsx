@@ -1,6 +1,24 @@
 import React from "react";
 import { Scale, Calendar, TrendingUp, FileSignature, ArrowUpRight, ArrowDownRight, Clock, ShieldCheck, PlayCircle } from "lucide-react";
-import { Process, AgendaEvent, FinancialItem, DocumentItem } from "../types";
+import { Process, AgendaEvent, FinancialItem, DocumentItem, LawFirm } from "../types";
+
+function isColorLight(hex: string): boolean {
+  if (!hex) return false;
+  const cleaned = hex.replace("#", "");
+  if (cleaned.length === 3) {
+    const r = parseInt(cleaned[0] + cleaned[0], 16);
+    const g = parseInt(cleaned[1] + cleaned[1], 16);
+    const b = parseInt(cleaned[2] + cleaned[2], 16);
+    return (r * 0.299 + g * 0.587 + b * 0.114) > 186;
+  }
+  if (cleaned.length === 6) {
+    const r = parseInt(cleaned.slice(0, 2), 16);
+    const g = parseInt(cleaned.slice(2, 4), 16);
+    const b = parseInt(cleaned.slice(4, 6), 16);
+    return (r * 0.299 + g * 0.587 + b * 0.114) > 186;
+  }
+  return false;
+}
 
 interface DashboardProps {
   processes: Process[];
@@ -9,9 +27,10 @@ interface DashboardProps {
   documents: DocumentItem[];
   onNavigate: (tab: string) => void;
   userRole: string;
+  activeFirm?: LawFirm;
 }
 
-export default function Dashboard({ processes, events, finances, documents, onNavigate, userRole }: DashboardProps) {
+export default function Dashboard({ processes, events, finances, documents, onNavigate, userRole, activeFirm }: DashboardProps) {
   const activeProcesses = processes.filter((p) => p.status === "Ativo");
   
   // Upcoming events
@@ -48,18 +67,35 @@ export default function Dashboard({ processes, events, finances, documents, onNa
   return (
     <div className="space-y-6" id="dashboard-tab-view">
       {/* Welcome Banner */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-radial from-slate-900 to-slate-950 p-6 rounded-2xl border border-slate-800 shadow-xl gap-4">
-        <div>
-          <h2 className="text-xl font-semibold text-white tracking-tight">Painel de Controle Jurídico</h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Status geral do escritório, prazos capturados e conciliação financeira consolidada.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 bg-slate-800/60 px-3 py-1.5 rounded-xl border border-slate-700/50">
-          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[11px] font-mono text-slate-300">adv.sportixbikeshop.com.br</span>
-        </div>
-      </div>
+      {(() => {
+        const isPrimaryLight = isColorLight(activeFirm?.primary_color || "#4f46e5");
+        const bannerTextColor = isPrimaryLight ? "text-slate-900" : "text-white";
+        const bannerMutedTextColor = isPrimaryLight ? "text-slate-600" : "text-slate-300";
+        const bannerPillBg = isPrimaryLight 
+          ? "bg-slate-900/10 border-slate-900/10 text-slate-800" 
+          : "bg-white/10 border-white/10 text-slate-200";
+
+        return (
+          <div 
+            className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-6 rounded-2xl border shadow-xl gap-4 transition-all"
+            style={{ 
+              backgroundColor: activeFirm?.primary_color || 'var(--theme-primary)',
+              borderColor: isPrimaryLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'
+            }}
+          >
+            <div>
+              <h2 className={`text-xl font-semibold tracking-tight ${bannerTextColor}`}>Painel de Controle Jurídico</h2>
+              <p className={`text-xs mt-1 ${bannerMutedTextColor}`}>
+                Status geral do escritório, prazos capturados e conciliação financeira consolidada.
+              </p>
+            </div>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border ${bannerPillBg}`}>
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[11px] font-mono">adv.sportixbikeshop.com.br</span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Bento Grid Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

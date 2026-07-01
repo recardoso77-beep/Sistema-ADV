@@ -15,6 +15,24 @@ import Workflows from "./components/Workflows";
 import AdminPanel from "./components/AdminPanel";
 import AiAssistant from "./components/AiAssistant";
 
+function isColorLight(hex: string): boolean {
+  if (!hex) return false;
+  const cleaned = hex.replace("#", "");
+  if (cleaned.length === 3) {
+    const r = parseInt(cleaned[0] + cleaned[0], 16);
+    const g = parseInt(cleaned[1] + cleaned[1], 16);
+    const b = parseInt(cleaned[2] + cleaned[2], 16);
+    return (r * 0.299 + g * 0.587 + b * 0.114) > 186;
+  }
+  if (cleaned.length === 6) {
+    const r = parseInt(cleaned.slice(0, 2), 16);
+    const g = parseInt(cleaned.slice(2, 4), 16);
+    const b = parseInt(cleaned.slice(4, 6), 16);
+    return (r * 0.299 + g * 0.587 + b * 0.114) > 186;
+  }
+  return false;
+}
+
 export default function App() {
   const [token, setToken] = useState<string>(localStorage.getItem("legalone_token") || "");
   const [user, setUser] = useState<User | null>(null);
@@ -42,6 +60,20 @@ export default function App() {
   }) || lawFirms.find((f) => f.id === "1") || lawFirms[0]) : null;
 
   const activeFirmName = activeFirm ? activeFirm.name : "Cardoso & Mendes Advogados";
+
+  const isPrimaryLight = isColorLight(activeFirm?.primary_color || "#4f46e5");
+  const isSecondaryLight = isColorLight(activeFirm?.secondary_color || "#111827");
+
+  const headerTextColor = isPrimaryLight ? "text-slate-900" : "text-white";
+  const headerMutedTextColor = isPrimaryLight ? "text-slate-600" : "text-slate-300";
+  const headerHoverBg = isPrimaryLight ? "hover:bg-slate-200/50" : "hover:bg-white/10";
+  const headerBorderColor = isPrimaryLight ? "border-slate-300/60" : "border-white/10";
+
+  const sidebarTextColor = isPrimaryLight ? "text-slate-800" : "text-slate-200/90";
+  const sidebarMutedTextColor = isPrimaryLight ? "text-slate-500" : "text-white/50";
+  const sidebarHoverBg = isPrimaryLight ? "hover:bg-slate-200/60 hover:text-slate-900" : "hover:bg-white/10 hover:text-white";
+  const sidebarActiveBg = "bg-[var(--theme-secondary)]";
+  const sidebarActiveTextColor = isSecondaryLight ? "text-slate-900 font-bold" : "text-white font-semibold";
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<string>("dashboard");
@@ -147,6 +179,18 @@ export default function App() {
       const secondary = activeFirm.secondary_color || "#111827";
       document.documentElement.style.setProperty("--theme-primary", primary);
       document.documentElement.style.setProperty("--theme-secondary", secondary);
+
+      // Favicon change
+      const faviconUrl = activeFirm.favicon_url || activeFirm.logo_url;
+      if (faviconUrl) {
+        let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+        if (!link) {
+          link = document.createElement("link");
+          link.rel = "icon";
+          document.head.appendChild(link);
+        }
+        link.href = faviconUrl;
+      }
     } else {
       document.documentElement.style.setProperty("--theme-primary", "#4f46e5");
       document.documentElement.style.setProperty("--theme-secondary", "#111827");
@@ -944,11 +988,14 @@ export default function App() {
       } as React.CSSProperties}
     >
       {/* Top Banner Navigation bar */}
-      <header className="bg-slate-900 text-white px-6 py-4 flex justify-between items-center shadow-md relative z-30">
+      <header 
+        className={`px-6 py-4 flex justify-between items-center shadow-md relative z-30 transition-colors border-b ${headerBorderColor} ${headerTextColor}`}
+        style={{ backgroundColor: 'var(--theme-primary)' }}
+      >
         <div className="flex items-center gap-3">
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-1.5 hover:bg-slate-800 rounded-lg sm:hidden text-slate-300"
+            className={`p-1.5 rounded-lg sm:hidden transition-colors ${headerHoverBg} ${headerTextColor}`}
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -957,30 +1004,30 @@ export default function App() {
             <img 
               src={activeFirm.logo_url} 
               alt={activeFirmName} 
-              className="h-10 w-10 object-contain rounded-xl bg-white p-1 border border-slate-700/50" 
+              className={`h-10 w-10 object-contain rounded-xl bg-white p-1 border ${headerBorderColor}`} 
               referrerPolicy="no-referrer"
             />
           ) : (
-            <div className="h-10 w-10 bg-primary-theme rounded-xl flex items-center justify-center text-white font-bold">
+            <div className="h-10 w-10 bg-[var(--theme-secondary)] rounded-xl flex items-center justify-center text-white font-bold">
               <Scale className="w-5 h-5" />
             </div>
           )}
           <div>
-            <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
-              {activeFirmName} <span className="text-[9px] bg-primary-theme/20 text-indigo-300 px-2 py-0.5 rounded-md">V2.4</span>
+            <h1 className="font-bold text-sm tracking-tight flex items-center gap-1.5">
+              {activeFirmName} <span className={`text-[9px] px-2 py-0.5 rounded-md ${isSecondaryLight ? 'bg-slate-200 text-slate-800' : 'bg-black/20 text-slate-100'}`}>V2.4</span>
             </h1>
-            <p className="text-[10px] text-slate-400 font-medium">SaaS de Gestão Litigiosa Integrada</p>
+            <p className={`text-[10px] font-medium ${headerMutedTextColor}`}>SaaS de Gestão Litigiosa Integrada</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           {user && (user.role === "admin" || user.email === "rodrigo.cardoso@sportix.com.br") && (
-            <div className="flex items-center gap-1.5 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700/60 text-xs text-slate-300">
-              <span className="text-slate-400 font-medium">Cluster:</span>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs ${headerBorderColor}`} style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
+              <span className={`font-medium ${headerMutedTextColor}`}>Cluster:</span>
               <select
                 value={selectedLawFirmFilter}
                 onChange={(e) => setSelectedLawFirmFilter(e.target.value)}
-                className="bg-transparent border-none text-slate-200 focus:outline-none cursor-pointer font-semibold outline-none pr-1"
+                className={`bg-transparent border-none focus:outline-none cursor-pointer font-semibold outline-none pr-1 ${headerTextColor}`}
               >
                 <option value="all" className="bg-slate-900 text-slate-200 font-normal">Todos os Escritórios</option>
                 {lawFirms.map((f) => (
@@ -995,26 +1042,38 @@ export default function App() {
           {/* AI trigger button */}
           <button
             onClick={() => setIsAiOpen(true)}
-            className="bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 font-semibold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer animate-pulse"
+            className={`font-semibold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer animate-pulse transition-colors border ${
+              isPrimaryLight 
+                ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300' 
+                : 'bg-white/10 hover:bg-white/20 text-slate-200 border-white/20'
+            }`}
           >
-            <Bot className="w-4 h-4 text-indigo-400" /> Assistente IA
+            <Bot className="w-4 h-4 text-[var(--theme-secondary)]" /> Assistente IA
           </button>
 
           {/* User profile details and logout */}
           {user && (
             <button
               onClick={() => setIsProfileModalOpen(true)}
-              className="hidden sm:flex items-center gap-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/60 px-3 py-1 rounded-xl text-xs font-semibold text-slate-200 cursor-pointer transition-colors"
+              className={`hidden sm:flex items-center gap-2 border px-3 py-1 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+                isPrimaryLight 
+                  ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800' 
+                  : 'bg-white/10 hover:bg-white/20 border-white/10 text-slate-200'
+              }`}
               title="Clique para alterar seu nome e senha"
             >
-              <UserCheck className="w-4 h-4 text-indigo-400" />
+              <UserCheck className="w-4 h-4 text-[var(--theme-secondary)]" />
               <span>{user.name} ({user.role.toUpperCase()})</span>
             </button>
           )}
 
           <button
             onClick={handleLogout}
-            className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+            className={`p-2 rounded-lg transition-colors cursor-pointer ${
+              isPrimaryLight 
+                ? 'text-slate-600 hover:bg-slate-200 hover:text-slate-900' 
+                : 'text-slate-300 hover:bg-white/10 hover:text-white'
+            }`}
             title="Encerrar sessão"
           >
             <LogOut className="w-4 h-4" />
@@ -1025,15 +1084,18 @@ export default function App() {
       {/* Main Container Workspace */}
       <div className="flex-1 flex relative">
         {/* Left Side Navigation bar */}
-        <nav className={`w-64 bg-slate-900 border-r border-slate-850 text-slate-400 text-xs font-medium py-6 px-4 space-y-1.5 flex-shrink-0 absolute sm:relative z-20 top-0 bottom-0 transition-transform sm:translate-x-0 ${
-          mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
-        }`}>
-          <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider px-3 mb-3">Escritório</div>
+        <nav 
+          className={`w-64 border-r text-xs font-medium py-6 px-4 space-y-1.5 flex-shrink-0 absolute sm:relative z-20 top-0 bottom-0 transition-transform sm:translate-x-0 transition-all ${
+            mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+          } ${isPrimaryLight ? 'border-slate-200' : 'border-white/10'}`}
+          style={{ backgroundColor: 'var(--theme-primary)' }}
+        >
+          <div className={`text-[10px] font-semibold uppercase tracking-wider px-3 mb-3 ${isPrimaryLight ? 'text-slate-600' : 'text-white/50'}`}>Escritório</div>
           
           <button
             onClick={() => { setActiveTab("dashboard"); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-              activeTab === "dashboard" ? "bg-primary-theme text-white font-semibold" : "hover:bg-slate-800/60 hover:text-slate-200"
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+              activeTab === "dashboard" ? `${sidebarActiveBg} ${sidebarActiveTextColor} shadow-sm` : `${sidebarTextColor} ${sidebarHoverBg}`
             }`}
           >
             <LayoutDashboard className="w-4 h-4" /> Painel de Controle
@@ -1041,8 +1103,8 @@ export default function App() {
 
           <button
             onClick={() => { setActiveTab("clients"); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-              activeTab === "clients" ? "bg-primary-theme text-white font-semibold" : "hover:bg-slate-800/60 hover:text-slate-200"
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+              activeTab === "clients" ? `${sidebarActiveBg} ${sidebarActiveTextColor} shadow-sm` : `${sidebarTextColor} ${sidebarHoverBg}`
             }`}
           >
             <Users className="w-4 h-4" /> Clientes (CRM)
@@ -1050,8 +1112,8 @@ export default function App() {
 
           <button
             onClick={() => { setActiveTab("processes"); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-              activeTab === "processes" ? "bg-primary-theme text-white font-semibold" : "hover:bg-slate-800/60 hover:text-slate-200"
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+              activeTab === "processes" ? `${sidebarActiveBg} ${sidebarActiveTextColor} shadow-sm` : `${sidebarTextColor} ${sidebarHoverBg}`
             }`}
           >
             <Scale className="w-4 h-4" /> Processos Judiciais
@@ -1059,8 +1121,8 @@ export default function App() {
 
           <button
             onClick={() => { setActiveTab("publications"); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-              activeTab === "publications" ? "bg-primary-theme text-white font-semibold" : "hover:bg-slate-800/60 hover:text-slate-200"
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+              activeTab === "publications" ? `${sidebarActiveBg} ${sidebarActiveTextColor} shadow-sm` : `${sidebarTextColor} ${sidebarHoverBg}`
             }`}
           >
             <Newspaper className="w-4 h-4" /> Publicações & Diários
@@ -1068,8 +1130,8 @@ export default function App() {
 
           <button
             onClick={() => { setActiveTab("agenda"); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-              activeTab === "agenda" ? "bg-primary-theme text-white font-semibold" : "hover:bg-slate-800/60 hover:text-slate-200"
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+              activeTab === "agenda" ? `${sidebarActiveBg} ${sidebarActiveTextColor} shadow-sm` : `${sidebarTextColor} ${sidebarHoverBg}`
             }`}
           >
             <Calendar className="w-4 h-4" /> Agenda e Prazos
@@ -1077,8 +1139,8 @@ export default function App() {
 
           <button
             onClick={() => { setActiveTab("documents"); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-              activeTab === "documents" ? "bg-primary-theme text-white font-semibold" : "hover:bg-slate-800/60 hover:text-slate-200"
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+              activeTab === "documents" ? `${sidebarActiveBg} ${sidebarActiveTextColor} shadow-sm` : `${sidebarTextColor} ${sidebarHoverBg}`
             }`}
           >
             <FileText className="w-4 h-4" /> Documentos e Assinatura
@@ -1086,12 +1148,12 @@ export default function App() {
 
           {hasFinancialAccess && (
             <>
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider px-3 pt-6 mb-3">Financeiro & Automação</div>
+              <div className={`text-[10px] font-semibold uppercase tracking-wider px-3 pt-6 mb-3 ${isPrimaryLight ? 'text-slate-600' : 'text-white/50'}`}>Financeiro & Automação</div>
 
               <button
                 onClick={() => { setActiveTab("financial"); setMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-                  activeTab === "financial" ? "bg-primary-theme text-white font-semibold" : "hover:bg-slate-800/60 hover:text-slate-200"
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+                  activeTab === "financial" ? `${sidebarActiveBg} ${sidebarActiveTextColor} shadow-sm` : `${sidebarTextColor} ${sidebarHoverBg}`
                 }`}
               >
                 <TrendingUp className="w-4 h-4" /> Fluxo de Caixa e Pix
@@ -1101,8 +1163,8 @@ export default function App() {
 
           <button
             onClick={() => { setActiveTab("workflows"); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-              activeTab === "workflows" ? "bg-primary-theme text-white font-semibold" : "hover:bg-slate-800/60 hover:text-slate-200"
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+              activeTab === "workflows" ? `${sidebarActiveBg} ${sidebarActiveTextColor} shadow-sm` : `${sidebarTextColor} ${sidebarHoverBg}`
             }`}
           >
             <Zap className="w-4 h-4" /> Automação Workflows
@@ -1110,11 +1172,11 @@ export default function App() {
 
           {(user.role === "admin" || user.role === "partner" || user.permissions?.includes("BYPASS_LGPD")) && (
             <>
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider px-3 pt-6 mb-3">Administração</div>
+              <div className={`text-[10px] font-semibold uppercase tracking-wider px-3 pt-6 mb-3 ${isPrimaryLight ? 'text-slate-600' : 'text-white/50'}`}>Administração</div>
               <button
                 onClick={() => { setActiveTab("admin"); setMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-                  activeTab === "admin" ? "bg-primary-theme text-white font-semibold" : "hover:bg-slate-800/60 hover:text-slate-200"
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+                  activeTab === "admin" ? `${sidebarActiveBg} ${sidebarActiveTextColor} shadow-sm` : `${sidebarTextColor} ${sidebarHoverBg}`
                 }`}
               >
                 <ShieldAlert className="w-4 h-4" /> Controle Adm / LGPD
@@ -1133,6 +1195,7 @@ export default function App() {
               documents={documents}
               onNavigate={setActiveTab}
               userRole={user.role}
+              activeFirm={activeFirm}
             />
           )}
 
@@ -1187,6 +1250,7 @@ export default function App() {
                 localStorage.removeItem("google_connected_email");
                 setIsGoogleConnected(false);
               }}
+              activeFirm={activeFirm}
             />
           )}
 
@@ -1198,6 +1262,7 @@ export default function App() {
               token={token}
               onRefresh={() => handleFetchAllData(token)}
               userRole={user.role}
+              activeFirm={activeFirm}
             />
           )}
 

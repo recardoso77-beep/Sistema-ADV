@@ -43,6 +43,7 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
   const [firmLicenses, setFirmLicenses] = useState(5);
   const [firmActive, setFirmActive] = useState(true);
   const [firmLogoUrl, setFirmLogoUrl] = useState("");
+  const [firmFaviconUrl, setFirmFaviconUrl] = useState("");
   const [firmPrimaryColor, setFirmPrimaryColor] = useState("#4f46e5");
   const [firmSecondaryColor, setFirmSecondaryColor] = useState("#111827");
   const [savingFirm, setSavingFirm] = useState(false);
@@ -399,6 +400,7 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
           licenses: Number(firmLicenses),
           active: firmActive,
           logo_url: firmLogoUrl,
+          favicon_url: firmFaviconUrl,
           primary_color: firmPrimaryColor,
           secondary_color: firmSecondaryColor
         }),
@@ -410,6 +412,7 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
         setFirmLicenses(5);
         setFirmActive(true);
         setFirmLogoUrl("");
+        setFirmFaviconUrl("");
         setFirmPrimaryColor("#4f46e5");
         setFirmSecondaryColor("#111827");
         setShowCreateFirmForm(false);
@@ -1222,6 +1225,18 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
                     <p className="text-[9px] text-slate-400 mt-0.5">URL de imagem hospedada ou arquivo público com a logo do escritório.</p>
                   </div>
 
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">URL do Favicon do Escritório</label>
+                    <input
+                      type="text"
+                      value={firmFaviconUrl}
+                      onChange={(e) => setFirmFaviconUrl(e.target.value)}
+                      placeholder="https://exemplo.com/favicon.ico"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500"
+                    />
+                    <p className="text-[9px] text-slate-400 mt-0.5">URL do ícone que será exibido na aba do navegador para este escritório.</p>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Cor Primária</label>
@@ -1349,6 +1364,18 @@ export default function AdminPanel({ users, token, onRefresh, userRole, currentU
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500"
                     />
                     <p className="text-[9px] text-slate-400 mt-0.5">URL de imagem hospedada ou arquivo público com a logo do escritório.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">URL do Favicon do Escritório</label>
+                    <input
+                      type="text"
+                      value={selectedFirm.favicon_url || ""}
+                      onChange={(e) => setSelectedFirm({ ...selectedFirm, favicon_url: e.target.value })}
+                      placeholder="https://exemplo.com/favicon.ico"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500"
+                    />
+                    <p className="text-[9px] text-slate-400 mt-0.5">URL do ícone que será exibido na aba do navegador para este escritório.</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">

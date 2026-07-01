@@ -5,7 +5,25 @@ import {
   HelpCircle, Printer, Download, UserCheck, Settings, Sparkles, RefreshCw, CheckCircle2,
   Trash2, Edit, Eye, ShieldAlert, LogIn, LogOut
 } from "lucide-react";
-import { AgendaEvent, Process } from "../types";
+import { AgendaEvent, Process, LawFirm } from "../types";
+
+function isColorLight(hex: string): boolean {
+  if (!hex) return false;
+  const cleaned = hex.replace("#", "");
+  if (cleaned.length === 3) {
+    const r = parseInt(cleaned[0] + cleaned[0], 16);
+    const g = parseInt(cleaned[1] + cleaned[1], 16);
+    const b = parseInt(cleaned[2] + cleaned[2], 16);
+    return (r * 0.299 + g * 0.587 + b * 0.114) > 186;
+  }
+  if (cleaned.length === 6) {
+    const r = parseInt(cleaned.slice(0, 2), 16);
+    const g = parseInt(cleaned.slice(2, 4), 16);
+    const b = parseInt(cleaned.slice(4, 6), 16);
+    return (r * 0.299 + g * 0.587 + b * 0.114) > 186;
+  }
+  return false;
+}
 
 interface AgendaProps {
   events: AgendaEvent[];
@@ -17,6 +35,7 @@ interface AgendaProps {
   isGoogleConnected?: boolean;
   onConnectGoogle?: (email?: string) => void;
   onDisconnectGoogle?: () => void;
+  activeFirm?: LawFirm;
 }
 
 type AgendaSubTab = "calendar" | "tasks" | "kanban" | "reports";
@@ -30,7 +49,8 @@ export default function Agenda({
   currentUser,
   isGoogleConnected = false,
   onConnectGoogle,
-  onDisconnectGoogle
+  onDisconnectGoogle,
+  activeFirm
 }: AgendaProps) {
   const [activeSubTab, setActiveSubTab] = useState<AgendaSubTab>("calendar");
   
@@ -787,7 +807,8 @@ export default function Agenda({
                   <button
                     onClick={handleSyncGoogle}
                     disabled={syncing}
-                    className="w-full text-center bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold text-xs py-2 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+                    className="w-full text-center text-white font-semibold text-xs py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs hover:opacity-95"
+                    style={{ backgroundColor: 'var(--theme-primary)' }}
                   >
                     {syncing ? (
                       <>
@@ -815,7 +836,8 @@ export default function Agenda({
                   <button
                     onClick={handleSyncGoogle}
                     disabled={syncing}
-                    className="w-full bg-slate-950 hover:bg-slate-900 border border-slate-800 text-white font-semibold text-[10px] py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                    className="w-full text-white font-semibold text-[10px] py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm hover:opacity-95"
+                    style={{ backgroundColor: 'var(--theme-primary)' }}
                   >
                     {syncing ? (
                       <>

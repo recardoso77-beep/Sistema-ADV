@@ -5,9 +5,10 @@
     "cnpj": "98.765.432/0001-21",
     "licenses": 5,
     "active": true,
-    "logo_url": "",
-    "primary_color": "#0f766e",
-    "secondary_color": "#111827",
+    "logo_url": "https://sportixbikeshop.com.br/logo/Logo_AALL_2.png",
+    "favicon_url": "https://sportixbikeshop.com.br/logo/Logo_AALL_2.png",
+    "primary_color": "#585855",
+    "secondary_color": "#9C9E98",
     "created_at": "2026-06-30T11:43:43Z"
   }
 ]
