@@ -49,6 +49,7 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Login Form
+  const [showLoginForm, setShowLoginForm] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -423,6 +424,88 @@ export default function App() {
       );
     }
 
+    // Se não clicou para ver o login, mostra a Landing Page pública (exigência do Google Verification)
+    if (!showLoginForm) {
+      return (
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white" id="public-landing-page">
+          {/* Header */}
+          <header className="w-full max-w-7xl mx-auto px-6 py-6 flex justify-between items-center border-b border-slate-900 z-10">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-600/20">
+                <Scale className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="font-bold text-lg tracking-tight text-white block font-sans">Legal Prime</span>
+                <span className="text-[10px] text-slate-400 font-medium">SaaS de Gestão Litigiosa Integrada</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowLoginForm(true)}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-xl text-xs cursor-pointer shadow-md shadow-indigo-600/10 transition-all"
+            >
+              Entrar no Sistema
+            </button>
+          </header>
+
+          {/* Main Content */}
+          <main className="flex-1 flex flex-col justify-center items-center px-6 py-16 max-w-4xl mx-auto relative z-10 text-center space-y-8">
+            {/* Background Accents */}
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-600/5 rounded-full blur-3xl animate-pulse" />
+            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-600/5 rounded-full blur-3xl animate-pulse" />
+
+            <div className="space-y-4">
+              <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[10px] font-semibold px-3 py-1 rounded-full uppercase tracking-wider">
+                Solução Completa para Escritórios de Advocacia
+              </span>
+              <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white font-sans max-w-3xl leading-tight">
+                Gestão de Processos, Prazos e Sincronização Inteligente
+              </h1>
+              <p className="text-sm text-slate-400 max-w-2xl mx-auto leading-relaxed">
+                O <strong>Legal Prime</strong> centraliza o controle do seu escritório jurídico. Automatize o acompanhamento processual de ponta a ponta, organize seus clientes no CRM integrado e garanta que nenhum prazo seja perdido com nossa sincronização avançada.
+              </p>
+            </div>
+
+            {/* Google Calendar Box */}
+            <div className="bg-slate-900/60 border border-slate-800 p-6 rounded-2xl max-w-xl text-left space-y-4 shadow-xl">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 bg-emerald-600/10 text-emerald-400 border border-emerald-500/20 rounded-xl flex items-center justify-center">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <h2 className="font-semibold text-white text-base font-sans">Integração Oficial com Google Agenda</h2>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Nossa plataforma integra-se de forma nativa e bidirecional com a <strong>Google Calendar API</strong> para permitir que seus prazos, compromissos judiciais, reuniões com clientes e audiências geradas no Legal Prime apareçam imediatamente na sua agenda pessoal e profissional do Google.
+              </p>
+              <div className="text-[11px] text-slate-500 leading-relaxed border-t border-slate-800/80 pt-3">
+                <strong>Uso de Dados do Usuário do Google:</strong> Solicitamos acesso ao escopo de visualizar e editar calendários para sincronizar exclusivamente os eventos jurídicos cadastrados na nossa plataforma com a sua conta Google. Respeitamos a sua privacidade e não compartilhamos esses dados com terceiros, sob nenhuma circunstância.
+              </div>
+            </div>
+
+            <div>
+              <button
+                onClick={() => setShowLoginForm(true)}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-8 py-3.5 rounded-2xl text-xs cursor-pointer shadow-lg shadow-indigo-600/10 transition-all inline-flex items-center gap-2"
+              >
+                Acessar Minha Conta Corporativa <ArrowUpRight className="w-4 h-4" />
+              </button>
+            </div>
+          </main>
+
+          {/* Footer */}
+          <footer className="w-full border-t border-slate-900 py-6 px-6 z-10 mt-auto">
+            <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-[11px] text-slate-500">
+              <p>© 2026 Legal Prime. Todos os direitos reservados.</p>
+              <div className="flex flex-wrap gap-4 md:gap-6 justify-center">
+                <a href="/politica-privacidade" className="hover:text-indigo-400 transition-colors">Política de Privacidade</a>
+                <a href="/termos-servico" className="hover:text-indigo-400 transition-colors">Termos de Serviço</a>
+                <span>Suporte: r.e.cardoso77@gmail.com</span>
+              </div>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
     // Tela de Login Tradicional sem Conta Google, com opção "Esqueci a Senha"
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 selection:bg-indigo-500 selection:text-white" id="auth-login-screen">
@@ -494,6 +577,13 @@ export default function App() {
               {loginLoading ? "Acessando..." : "Entrar no Painel"}
             </button>
           </form>
+
+          <button
+            onClick={() => setShowLoginForm(false)}
+            className="w-full text-center py-2.5 bg-slate-950 hover:bg-slate-900 border border-slate-850 text-slate-400 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+          >
+            Voltar para a Página Inicial
+          </button>
 
           {/* Atalhos Rápidos para Demonstração removidos */}
         </div>

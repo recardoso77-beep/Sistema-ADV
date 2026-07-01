@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config({ override: true });
+
 import express, { Response } from "express";
 import path from "path";
 import fs from "fs";
@@ -218,6 +221,113 @@ app.get("/api/download/sql", async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: "Erro ao gerar arquivo SQL: " + err.message });
   }
+});
+
+// ==========================================
+// ROTAS PÚBLICAS REQUERIDAS PELO GOOGLE OAUTH (POLÍTICA DE PRIVACIDADE E TERMOS)
+// ==========================================
+
+app.get("/politica-privacidade", (req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Política de Privacidade - Legal Prime</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 40px 20px; background-color: #f9f9f9; }
+        h1 { color: #0d1b2a; border-bottom: 2px solid #1b263b; padding-bottom: 10px; }
+        h2 { color: #1b263b; margin-top: 30px; }
+        p, li { font-size: 16px; }
+        .container { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        footer { margin-top: 40px; text-align: center; font-size: 14px; color: #777; }
+        code { background-color: #eee; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Política de Privacidade</h1>
+        <p>A presente Política de Privacidade descreve como a plataforma <strong>Legal Prime</strong> (doravante referida como "Plataforma" ou "nós"), acessível em <code>https://adv.sportixbikeshop.com.br</code>, coleta, usa, armazena e protege os dados dos usuários ao integrar-se com serviços de terceiros, especificamente a <strong>Google Calendar API</strong> (Google Agenda).</p>
+        
+        <h2>1. Informações que Coletamos e Acessamos</h2>
+        <p>Ao conectar a sua Conta Google à nossa Plataforma, nós solicitamos acesso aos seguintes escopos de autorização da Google Calendar API:</p>
+        <ul>
+          <li><strong>visualizar e editar seus calendários:</strong> Usado para ler os compromissos existentes e criar novos eventos relacionados a audiências judiciais, prazos processuais e reuniões agendadas no sistema de gestão.</li>
+        </ul>
+        
+        <h2>2. Como Utilizamos as Informações</h2>
+        <p>O acesso à sua Google Agenda serve exclusivamente para:</p>
+        <ul>
+          <li>Sincronizar de forma bidirecional seus prazos, intimações e audiências gerados no sistema <strong>Legal Prime</strong> diretamente com a sua agenda pessoal do Google.</li>
+          <li>Garantir que você receba notificações nativas do Google no seu celular e e-mail sobre prazos importantes do seu sistema de gestão jurídica.</li>
+        </ul>
+        
+        <h2>3. Compartilhamento e Transferência de Dados</h2>
+        <p>Nós temos um compromisso absoluto com o sigilo profissional (estatuto da OAB) e a LGPD:</p>
+        <ul>
+          <li><strong>Não vendemos, não alugamos e não compartilhamos</strong> qualquer dato obtido através das APIs do Google com terceiros.</li>
+          <li>Os dados da sua agenda permanecem estritamente dentro da Plataforma e são utilizados apenas por você e pelos membros autorizados do seu escritório.</li>
+          <li>O uso de informações recebidas das APIs do Google está em estrita conformidade com a <a href="https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes" target="_blank" rel="noopener noreferrer">Política de Dados do Usuário dos Serviços de API do Google</a>, incluindo os requisitos de Uso Limitado (Limited Use).</li>
+        </ul>
+
+        <h2>4. Armazenamento e Exclusão</h2>
+        <p>Os tokens de acesso OAuth são armazenados de forma criptografada e segura no nosso banco de dados. Você pode remover ou revogar este acesso a qualquer momento diretamente pelo painel administrativo da Plataforma ou através da sua página de segurança da conta Google.</p>
+
+        <h2>5. Contato</h2>
+        <p>Se tiver dúvidas sobre esta Política, entre em contato pelo e-mail: <code>r.e.cardoso77@gmail.com</code>.</p>
+      </div>
+      <footer>
+        <p>&copy; 2026 Legal Prime. Todos os direitos reservados.</p>
+      </footer>
+    </body>
+    </html>
+  `);
+});
+
+app.get("/termos-servico", (req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Termos de Serviço - Legal Prime</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 40px 20px; background-color: #f9f9f9; }
+        h1 { color: #0d1b2a; border-bottom: 2px solid #1b263b; padding-bottom: 10px; }
+        h2 { color: #1b263b; margin-top: 30px; }
+        p, li { font-size: 16px; }
+        .container { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        footer { margin-top: 40px; text-align: center; font-size: 14px; color: #777; }
+        code { background-color: #eee; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Termos de Serviço</h1>
+        <p>Estes Termos de Serviço regem o uso do aplicativo <strong>Legal Prime</strong> (doravante referido como "Plataforma") acessível no endereço <code>https://adv.sportixbikeshop.com.br</code>.</p>
+        
+        <h2>1. Uso da Integração Google Agenda</h2>
+        <p>A Plataforma oferece uma integração opcional com a Google Agenda. Ao ativar essa funcionalidade, você concorda em conceder permissão à Plataforma para criar, ler, atualizar e excluir eventos de calendário exclusivamente relacionados a suas atividades jurídicas agendadas.</p>
+        
+        <h2>2. Responsabilidades do Usuário</h2>
+        <p>Você é responsável por manter a confidencialidade das credenciais de acesso de sua conta e por garantir que a integração seja utilizada de acordo com as normas da Ordem dos Advogados do Brasil (OAB) e as legislações pertinentes, como a LGPD.</p>
+        
+        <h2>3. Limitação de Responsabilidade</h2>
+        <p>A Plataforma se esforça para garantir uma sincronização em tempo real e de alta qualidade. Contudo, não nos responsabilizamos por perdas decorrentes de atrasos, falhas de conectividade ou indisponibilidade temporária dos serviços do Google.</p>
+        
+        <h2>4. Alterações nos Termos</h2>
+        <p>Podemos modificar estes termos para refletir alterações em nossa Plataforma ou na legislação. O uso continuado da integração após tais modificações constitui aceitação dos novos termos.</p>
+      </div>
+      <footer>
+        <p>&copy; 2026 Legal Prime. Todos os direitos reservados.</p>
+      </footer>
+    </body>
+    </html>
+  `);
 });
 
 // ==========================================
@@ -1261,16 +1371,89 @@ function getSuccessHTML(providerName: string) {
 // GOOGLE CALENDAR SYNC ENDPOINTS
 // ==========================================
 
+app.get("/api/google-calendar/diagnostics", async (req, res) => {
+  try {
+    const rawClientId = process.env.GOOGLE_CLIENT_ID || "";
+    const rawClientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
+    const rawRedirectUri = process.env.GOOGLE_REDIRECT_URI || "";
+    const rawAppUrl = process.env.APP_URL || "";
+    
+    const cleanClientId = GoogleCalendarService.getClientId() || "";
+    const cleanClientSecret = GoogleCalendarService.getClientSecret() || "";
+    
+    const redact = (str: string, keepStart = 8, keepEnd = 8) => {
+      if (!str) return "NÃO CONFIGURADO";
+      if (str.length <= keepStart + keepEnd) return "***";
+      return `${str.substring(0, keepStart)}...${str.substring(str.length - keepEnd)}`;
+    };
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      current_working_dir: process.cwd(),
+      node_env: process.env.NODE_ENV,
+      raw_variables_read_by_node: {
+        GOOGLE_CLIENT_ID: {
+          exists: !!rawClientId,
+          length: rawClientId.length,
+          redacted: redact(rawClientId, 12, 12),
+          has_spaces_at_ends: rawClientId.trim() !== rawClientId,
+          has_carriage_return: rawClientId.includes("\r"),
+          has_newline: rawClientId.includes("\n"),
+          has_double_quotes: rawClientId.startsWith('"') && rawClientId.endsWith('"'),
+          has_single_quotes: rawClientId.startsWith("'") && rawClientId.endsWith("'"),
+        },
+        GOOGLE_CLIENT_SECRET: {
+          exists: !!rawClientSecret,
+          length: rawClientSecret.length,
+          redacted: redact(rawClientSecret, 6, 4),
+          has_spaces_at_ends: rawClientSecret.trim() !== rawClientSecret,
+          has_carriage_return: rawClientSecret.includes("\r"),
+          has_newline: rawClientSecret.includes("\n"),
+        },
+        GOOGLE_REDIRECT_URI: {
+          exists: !!rawRedirectUri,
+          value: rawRedirectUri,
+        },
+        APP_URL: {
+          exists: !!rawAppUrl,
+          value: rawAppUrl,
+        }
+      },
+      cleaned_variables_by_service: {
+        GOOGLE_CLIENT_ID: {
+          length: cleanClientId.length,
+          redacted: redact(cleanClientId, 12, 12),
+        },
+        GOOGLE_CLIENT_SECRET: {
+          length: cleanClientSecret.length,
+          redacted: redact(cleanClientSecret, 6, 4),
+        }
+      },
+      message: "Se as variáveis raw_variables_read_by_node estiverem vazias ou com o valor antigo (por exemplo, terminando em '.comm'), significa que o servidor Node.js no cPanel precisa ser REINICIADO para ler o arquivo .env atualizado."
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/google-calendar/auth-url", Auth.requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id || "1";
     const lawFirmId = req.user?.law_firm_id || "1";
     const appUrl = process.env.APP_URL || `https://${req.headers.host}`;
     
-    const client_id = process.env.GOOGLE_CLIENT_ID;
-    const client_secret = process.env.GOOGLE_CLIENT_SECRET;
+    const client_id = GoogleCalendarService.getClientId();
+    const client_secret = GoogleCalendarService.getClientSecret();
     
     if (client_id && client_secret) {
+      console.log(`[GOOGLE_CALENDAR_AUTH] GOOGLE_CLIENT_ID detectado e higienizado:
+        - Original: ${process.env.GOOGLE_CLIENT_ID}
+        - Higienizado: ${client_id}
+        - Comprimento: ${client_id.length} caracteres
+        - Começa com: ${client_id.substring(0, 8)}
+        - Termina com: ${client_id.substring(client_id.length - 15)}`);
+      
       const url = GoogleCalendarService.getAuthUrl(userId, lawFirmId, appUrl);
       res.json({ url, mock: false });
     } else {

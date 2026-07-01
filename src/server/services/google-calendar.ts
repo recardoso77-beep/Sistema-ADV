@@ -23,11 +23,38 @@ export const CALENDAR_CATEGORIES = [
 ];
 
 export const GoogleCalendarService = {
+  getClientId(): string | undefined {
+    let clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) return undefined;
+    
+    // Clean spaces and quotes
+    clientId = clientId.trim().replace(/^['"]|['"]$/g, "").trim().replace(/\s+/g, "");
+    
+    // Fix extra 'm' at the end of .googleusercontent.comm
+    if (clientId.endsWith(".googleusercontent.comm")) {
+      clientId = clientId.slice(0, -1);
+    }
+    
+    // If it is truncated but has .apps, auto-append .googleusercontent.com
+    if (clientId.includes(".apps") && !clientId.endsWith(".googleusercontent.com")) {
+      const appsIndex = clientId.indexOf(".apps");
+      clientId = clientId.substring(0, appsIndex) + ".apps.googleusercontent.com";
+    }
+    
+    return clientId;
+  },
+
+  getClientSecret(): string | undefined {
+    let secret = process.env.GOOGLE_CLIENT_SECRET;
+    if (!secret) return undefined;
+    return secret.trim().replace(/^['"]|['"]$/g, "").trim().replace(/\s+/g, "");
+  },
+
   /**
    * Generates the authentic Google OAuth URL for Google Calendar.
    */
   getAuthUrl(userId: string, lawFirmId: string, appUrl: string): string {
-    const client_id = process.env.GOOGLE_CLIENT_ID;
+    const client_id = this.getClientId();
     if (!client_id) {
       throw new Error("GOOGLE_CLIENT_ID não está configurado nas variáveis de ambiente.");
     }
@@ -61,8 +88,8 @@ export const GoogleCalendarService = {
    * Exchanges authorization code for access and refresh tokens.
    */
   async exchangeCode(code: string, redirectUri: string, userId: string, lawFirmId: string): Promise<any> {
-    const client_id = process.env.GOOGLE_CLIENT_ID;
-    const client_secret = process.env.GOOGLE_CLIENT_SECRET;
+    const client_id = this.getClientId();
+    const client_secret = this.getClientSecret();
 
     if (!client_id || !client_secret) {
       throw new Error("Credenciais do Google OAuth não configuradas.");
@@ -169,8 +196,8 @@ export const GoogleCalendarService = {
         return null;
       }
 
-      const client_id = process.env.GOOGLE_CLIENT_ID;
-      const client_secret = process.env.GOOGLE_CLIENT_SECRET;
+      const client_id = this.getClientId();
+      const client_secret = this.getClientSecret();
 
       if (!client_id || !client_secret) {
         throw new Error("Credenciais do Google OAuth não configuradas para renovação.");
