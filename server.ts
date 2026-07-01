@@ -1238,7 +1238,7 @@ function getSuccessHTML(providerName: string) {
       <body>
         <div class="card">
           <h2 style="color: #4f46e5; margin-bottom: 10px;">Integração Concluída!</h2>
-          <p>Sua conta do ${providerName} foi vinculada com sucesso ao LegalOne.</p>
+          <p>Sua conta do ${providerName} foi vinculada com sucesso ao Legal Prime.</p>
           <div class="spinner"></div>
           <p style="font-size: 12px; color: #64748b;">Esta janela será fechada automaticamente em instantes...</p>
         </div>
@@ -1298,8 +1298,8 @@ app.get("/api/google-calendar/callback", async (req, res) => {
       const accountData = {
         user_id: userId,
         provider: "google_calendar",
-        email: "advogado-google-mock@legalone.com",
-        storage_name: "Google Calendar (Mock)",
+        email: "rodrigo.cardoso@sportix.com.br",
+        storage_name: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
         access_token: "mock_calendar_access_token",
         refresh_token: "mock_calendar_refresh_token",
         expires_at: (Date.now() + 3600 * 1000).toString(),
@@ -1311,7 +1311,7 @@ app.get("/api/google-calendar/callback", async (req, res) => {
           hearing: "mock_hearing_cal",
           meeting: "mock_meeting_cal",
           reminder: "mock_reminder_cal",
-          default: "mock_default_cal"
+          default: "primary"
         }),
         updated_at: new Date().toISOString()
       };
@@ -1347,7 +1347,8 @@ app.get("/api/google-calendar/status", Auth.requireAuth, async (req: Authenticat
         connected: true,
         email: existing.email || "usuario-google@email.com",
         last_sync: existing.updated_at || existing.created_at,
-        sync_status: existing.sync_status || "synced"
+        sync_status: existing.sync_status || "synced",
+        picture: existing.storage_name && existing.storage_name.startsWith("http") ? existing.storage_name : undefined
       });
     } else {
       res.json({ connected: false });

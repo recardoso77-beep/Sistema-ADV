@@ -1,7 +1,7 @@
 import { DB } from "../db";
 
-// Base64 JWT parser for extracting email and google user id (sub) from id_token
-function parseIdToken(idToken: string): { email?: string; sub?: string } {
+// Base64 JWT parser for extracting email, name, picture and google user id (sub) from id_token
+function parseIdToken(idToken: string): { email?: string; sub?: string; name?: string; picture?: string } {
   try {
     const parts = idToken.split(".");
     if (parts.length !== 3) return {};
@@ -15,11 +15,11 @@ function parseIdToken(idToken: string): { email?: string; sub?: string } {
 
 // Google Calendar Category Mapping
 export const CALENDAR_CATEGORIES = [
-  { type: "deadline", name: "LegalOne - Prazos Judiciais", colorId: "20" }, // Red/Tomato
-  { type: "hearing", name: "LegalOne - Audiências", colorId: "18" },       // Tangerine/Amber
-  { type: "meeting", name: "LegalOne - Reuniões", colorId: "9" },          // Blueberry/Indigo
-  { type: "reminder", name: "LegalOne - Lembretes", colorId: "13" },       // Graphite/Slate
-  { type: "default", name: "LegalOne - Compromissos", colorId: "3" },      // Grape/Purple
+  { type: "deadline", name: "Legal Prime - Prazos Judiciais", colorId: "20" }, // Red/Tomato
+  { type: "hearing", name: "Legal Prime - Audiências", colorId: "18" },       // Tangerine/Amber
+  { type: "meeting", name: "Legal Prime - Reuniões", colorId: "9" },          // Blueberry/Indigo
+  { type: "reminder", name: "Legal Prime - Lembretes", colorId: "13" },       // Graphite/Slate
+  { type: "default", name: "Legal Prime - Rodrigo Cardoso (Pessoal)", colorId: "3" }, // Grape/Purple
 ];
 
 export const GoogleCalendarService = {
@@ -88,7 +88,7 @@ export const GoogleCalendarService = {
     }
 
     const data = await response.json() as any;
-    const { email, sub: googleUserId } = parseIdToken(data.id_token || "");
+    const { email, sub: googleUserId, picture } = parseIdToken(data.id_token || "");
 
     const expiresAt = Date.now() + (data.expires_in || 3600) * 1000;
 
@@ -96,7 +96,7 @@ export const GoogleCalendarService = {
       user_id: userId,
       provider: "google_calendar",
       email: email || "usuario-google@email.com",
-      storage_name: "Google Calendar",
+      storage_name: picture || "Google Calendar",
       access_token: data.access_token,
       refresh_token: data.refresh_token || "", // Store refresh_token
       expires_at: expiresAt.toString(),
@@ -255,6 +255,11 @@ export const GoogleCalendarService = {
     const updatedMapping: Record<string, string> = { ...currentMapping };
 
     for (const cat of CALENDAR_CATEGORIES) {
+      if (cat.type === "default") {
+        updatedMapping[cat.type] = "primary";
+        continue;
+      }
+
       // Check if calendar already mapped and still exists
       const mappedId = updatedMapping[cat.type];
       const stillExists = mappedId && existingList.some((item: any) => item.id === mappedId);
