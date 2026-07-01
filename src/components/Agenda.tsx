@@ -33,6 +33,62 @@ export default function Agenda({
   onDisconnectGoogle
 }: AgendaProps) {
   const [activeSubTab, setActiveSubTab] = useState<AgendaSubTab>("calendar");
+  
+  // Estados para navegação de meses e interação do calendário (Google-style)
+  const [currentYear, setCurrentYear] = useState(2026);
+  const [currentMonth, setCurrentMonth] = useState(6); // Começa em Julho de 2026 (mês 6, pois é 0-indexed)
+
+  const monthNames = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+  ];
+
+  const handlePrevMonth = () => {
+    if (currentMonth === 0) {
+      setCurrentMonth(11);
+      setCurrentYear(prev => prev - 1);
+    } else {
+      setCurrentMonth(prev => prev - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (currentMonth === 11) {
+      setCurrentMonth(0);
+      setCurrentYear(prev => prev + 1);
+    } else {
+      setCurrentMonth(prev => prev + 1);
+    }
+  };
+
+  const handleDayClick = (day: number) => {
+    if (userRole === "client") return;
+    
+    // Configura a data selecionada como o dia clicado do mês/ano vigentes
+    // Horário padrão às 09:00 local
+    const selectedDate = new Date(currentYear, currentMonth, day, 9, 0, 0);
+    
+    // Converte para fuso local para o datetime-local do HTML
+    const yearStr = selectedDate.getFullYear();
+    const monthStr = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const dayStr = String(selectedDate.getDate()).padStart(2, '0');
+    const hoursStr = String(selectedDate.getHours()).padStart(2, '0');
+    const minsStr = String(selectedDate.getMinutes()).padStart(2, '0');
+    const formattedStart = `${yearStr}-${monthStr}-${dayStr}T${hoursStr}:${minsStr}`;
+    
+    const formattedEnd = `${yearStr}-${monthStr}-${dayStr}T${String(selectedDate.getHours() + 1).padStart(2, '0')}:${minsStr}`;
+    
+    setFormStart(formattedStart);
+    setFormEnd(formattedEnd);
+    setFormTitle("");
+    setFormDescription("");
+    setFormType("deadline");
+    setFormProcessId("");
+    setFormAssignedTo([]);
+    setEditingEvent(null);
+    setIsNewModalOpen(true);
+  };
+
   const [filterType, setFilterType] = useState<"all" | "hearing" | "deadline" | "meeting" | "reminder">("all");
   const [filterStatus, setFilterStatus] = useState<"all" | "Pendente" | "Concluído">("all");
   const [search, setSearch] = useState("");
@@ -555,17 +611,25 @@ export default function Agenda({
     return colors[charCode % colors.length];
   };
 
-  // Static June 2026 Calendar grid generation (June 2026 starts on a Monday, 30 days)
-  const daysInJune2026 = 30;
-  const startDayOffset = 1; // Monday is index 1 (Sunday is 0)
+  // Dynamic Calendar grid generation based on active month and year
+  const getDaysInMonth = (year: number, month: number) => {
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (year: number, month: number) => {
+    return new Date(year, month, 1).getDay(); // Sunday: 0, Monday: 1, etc.
+  };
+
+  const daysInMonth = getDaysInMonth(currentYear, currentMonth);
+  const startDayOffset = getFirstDayOfMonth(currentYear, currentMonth);
   const calendarCells = [];
   
   // Fill initial offset empty cells
   for (let i = 0; i < startDayOffset; i++) {
     calendarCells.push(null);
   }
-  // Fill June days
-  for (let i = 1; i <= daysInJune2026; i++) {
+  // Fill month days
+  for (let i = 1; i <= daysInMonth; i++) {
     calendarCells.push(i);
   }
   // Fill remaining cells to complete weeks
@@ -574,12 +638,12 @@ export default function Agenda({
     calendarCells.push(null);
   }
 
-  // Get events on a specific June 2026 day
+  // Get events on a specific day of the active month/year
   const getEventsOnDay = (day: number | null) => {
     if (!day) return [];
     return events.filter(ev => {
       const d = new Date(ev.start_date);
-      return d.getDate() === day && d.getMonth() === 5 && d.getFullYear() === 2026;
+      return d.getDate() === day && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
   };
 
@@ -843,27 +907,36 @@ export default function Agenda({
             {/* Mini static calendar */}
             <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-2xs space-y-2 text-center">
               <div className="flex justify-between items-center text-xs font-bold text-slate-700">
-                <span>Junho de 2026</span>
+                <span>{monthNames[currentMonth]} de {currentYear}</span>
                 <div className="flex gap-1">
-                  <ChevronLeft className="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-700" />
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-700" />
+                  <ChevronLeft onClick={handlePrevMonth} className="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-700" />
+                  <ChevronRight onClick={handleNextMonth} className="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-700" />
                 </div>
               </div>
               <div className="grid grid-cols-7 gap-1 text-[9px] font-bold text-slate-400 pt-1">
                 <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
               </div>
               <div className="grid grid-cols-7 gap-1 text-[10px] text-slate-600 pt-1">
-                {Array.from({ length: 1 }, (_, i) => <span key={`empty-${i}`} className="text-transparent">.</span>)}
-                {Array.from({ length: 30 }, (_, i) => (
-                  <span 
-                    key={i} 
-                    className={`p-1 hover:bg-indigo-50 rounded-full cursor-pointer transition-colors ${
-                      i + 1 === 15 ? "bg-indigo-600 text-white font-bold" : ""
-                    }`}
-                  >
-                    {i + 1}
-                  </span>
-                ))}
+                {Array.from({ length: startDayOffset }, (_, i) => <span key={`empty-${i}`} className="text-transparent">.</span>)}
+                {Array.from({ length: daysInMonth }, (_, i) => {
+                  const dayNum = i + 1;
+                  const isCurrentDay = dayNum === new Date().getDate() && currentMonth === new Date().getMonth() && currentYear === new Date().getFullYear();
+                  
+                  return (
+                    <div key={i} className="flex justify-center items-center py-0.5">
+                      <span 
+                        onClick={() => handleDayClick(dayNum)}
+                        className={`w-5.5 h-5.5 flex items-center justify-center text-[10px] rounded-full cursor-pointer transition-all ${
+                          isCurrentDay 
+                            ? "bg-indigo-600 text-white font-bold shadow-2xs" 
+                            : "hover:bg-indigo-50 text-slate-700 font-medium"
+                        }`}
+                      >
+                        {dayNum}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -873,7 +946,34 @@ export default function Agenda({
             {/* Calendar Month Header */}
             <div className="p-4 border-b border-slate-150 flex justify-between items-center bg-slate-50/50">
               <div className="flex items-center gap-3">
-                <span className="text-sm font-bold text-slate-800">Junho de 2026</span>
+                <span className="text-base font-bold text-slate-900">{monthNames[currentMonth]} de {currentYear}</span>
+                <div className="flex gap-1.5 border border-slate-200 rounded-lg p-1 bg-white">
+                  <button 
+                    onClick={handlePrevMonth} 
+                    className="p-1 hover:bg-slate-50 rounded-md text-slate-600 transition-colors cursor-pointer"
+                    title="Mês Anterior"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const d = new Date();
+                      setCurrentMonth(d.getMonth());
+                      setCurrentYear(d.getFullYear());
+                    }} 
+                    className="px-2 py-0.5 text-[10px] font-bold hover:bg-slate-50 rounded-md text-slate-600 transition-colors cursor-pointer"
+                    title="Hoje"
+                  >
+                    Hoje
+                  </button>
+                  <button 
+                    onClick={handleNextMonth} 
+                    className="p-1 hover:bg-slate-50 rounded-md text-slate-600 transition-colors cursor-pointer"
+                    title="Próximo Mês"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
                 <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">
                   Exibição Mensal
                 </span>
@@ -881,7 +981,7 @@ export default function Agenda({
               
               <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
                 <Info className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Clique em "Agendar" para registrar compromissos rápidos.</span>
+                <span>Clique em um dia vazio para agendar, ou no compromisso para editar.</span>
               </div>
             </div>
 
@@ -900,11 +1000,19 @@ export default function Agenda({
             <div className="grid grid-cols-7 divide-x divide-y divide-slate-100 min-h-[500px]">
               {calendarCells.map((day, idx) => {
                 const dayEvents = getEventsOnDay(day);
+                const isToday = day === new Date().getDate() && currentMonth === new Date().getMonth() && currentYear === new Date().getFullYear();
+                
                 return (
-                  <div key={idx} className="min-h-[100px] bg-white p-2 flex flex-col justify-between group hover:bg-slate-50/30 transition-colors">
+                  <div 
+                    key={idx} 
+                    onClick={() => day && handleDayClick(day)}
+                    className={`min-h-[100px] bg-white p-2 flex flex-col justify-between group transition-colors ${
+                      day ? "cursor-pointer hover:bg-indigo-50/20" : "bg-slate-50/10"
+                    }`}
+                  >
                     <div className="flex justify-between items-start">
                       <span className={`text-[11px] font-bold ${
-                        day ? (day === 15 ? "bg-indigo-600 text-white h-5 w-5 rounded-full flex items-center justify-center shadow-xs" : "text-slate-700") : "text-transparent"
+                        day ? (isToday ? "bg-indigo-600 text-white h-5 w-5 rounded-full flex items-center justify-center shadow-xs" : "text-slate-700") : "text-transparent"
                       }`}>
                         {day}
                       </span>
@@ -916,7 +1024,7 @@ export default function Agenda({
                         <div 
                           key={ev.id} 
                           title={`${ev.title} - ${ev.description || ""}`}
-                          onClick={() => handleOpenEditModal(ev)}
+                          onClick={(e) => { e.stopPropagation(); handleOpenEditModal(ev); }}
                           className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-md border truncate cursor-pointer transition-colors ${
                             ev.status === "Concluído" ? "bg-slate-100 text-slate-400 line-through border-slate-200" :
                             ev.type === "hearing" ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100" :
