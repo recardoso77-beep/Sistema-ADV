@@ -14,7 +14,6 @@ import Financial from "./components/Financial";
 import Workflows from "./components/Workflows";
 import AdminPanel from "./components/AdminPanel";
 import AiAssistant from "./components/AiAssistant";
-import GedDropbox from "./components/GedDropbox";
 
 export default function App() {
   const [token, setToken] = useState<string>(localStorage.getItem("legalone_token") || "");
@@ -929,15 +928,6 @@ export default function App() {
             <FileText className="w-4 h-4" /> Documentos e Assinatura
           </button>
 
-          <button
-            onClick={() => { setActiveTab("ged_dropbox"); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-              activeTab === "ged_dropbox" ? "bg-primary-theme text-white font-semibold" : "hover:bg-slate-800/60 hover:text-slate-200"
-            }`}
-          >
-            <Cloud className="w-4 h-4 text-indigo-400" /> Armazenamento em Nuvem
-          </button>
-
           {hasFinancialAccess && (
             <>
               <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider px-3 pt-6 mb-3">Financeiro & Automação</div>
@@ -1052,15 +1042,6 @@ export default function App() {
               token={token}
               onRefresh={() => handleFetchAllData(token)}
               userRole={user.role}
-            />
-          )}
-
-          {activeTab === "ged_dropbox" && (
-            <GedDropbox
-              clients={clients}
-              processes={processes}
-              token={token}
-              onRefresh={() => handleFetchAllData(token)}
             />
           )}
 
